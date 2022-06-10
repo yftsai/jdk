@@ -196,6 +196,9 @@ void CodeCache::check_heap_sizes(size_t non_nmethod_size, size_t profiled_size, 
   }
 }
 
+int CodeCache::_nmh_index = 0;
+nmethod_header CodeCache::_nm_headers[CodeCache::_nmh_limit];
+
 void CodeCache::initialize_heaps() {
   bool non_nmethod_set      = FLAG_IS_CMDLINE(NonNMethodCodeHeapSize);
   bool profiled_set         = FLAG_IS_CMDLINE(ProfiledCodeHeapSize);
@@ -336,6 +339,11 @@ void CodeCache::initialize_heaps() {
   add_heap(profiled_space, "CodeHeap 'profiled nmethods'", CodeBlobType::MethodProfiled);
   // Tier 1 and tier 4 (non-profiled) methods and native methods
   add_heap(non_profiled_space, "CodeHeap 'non-profiled nmethods'", CodeBlobType::MethodNonProfiled);
+
+  _nmh_index = 0;
+  for (int i = 0; i < _nmh_limit; i++) {
+    _nm_headers[i]._is_used = false;
+  }
 }
 
 size_t CodeCache::page_size(bool aligned, size_t min_pages) {
@@ -621,6 +629,7 @@ void CodeCache::free(CodeBlob* cb) {
     if (((nmethod *)cb)->has_dependencies()) {
       _number_of_nmethods_with_dependencies--;
     }
+    free_nmh(cb->as_nmethod()->_header);
   }
   if (cb->is_adapter_blob()) {
     heap->set_adapter_count(heap->adapter_count() - 1);
@@ -1756,4 +1765,23 @@ void CodeCache::print_names(outputStream *out) {
     CodeHeapState::print_names(out, (*heap));
   }
 }
+
+nmethod_header *CodeCache::allocate_nmh() {
+  for (int i = 0; i < _nmh_limit && _nm_headers[_nmh_index]._is_used; i++, _nmh_index = (_nmh_index + 1) % _nmh_limit)
+    ;
+  nmethod_header *nmh = &_nm_headers[_nmh_index];
+  if (nmh->_is_used) {
+    return nullptr;
+  }
+  else {
+    nmh->_is_used = true;
+    return nmh;
+  }
+}
+
+void CodeCache::free_nmh(nmethod_header *nmh) {
+  assert(nmh->_is_used, "double free");
+  nmh->_is_used = false;
+}
+
 //---<  END  >--- CodeHeap State Analytics.

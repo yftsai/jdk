@@ -46,6 +46,7 @@ public class NMethod extends CompiledMethod {
   private static CIntegerField origPCOffsetField;
   private static CIntegerField stubOffsetField;
   private static CIntegerField oopsOffsetField;
+  private static AddressField headerField;
   private static CIntegerField metadataOffsetField;
   private static CIntegerField scopesPCsOffsetField;
   private static CIntegerField dependenciesOffsetField;
@@ -85,26 +86,28 @@ public class NMethod extends CompiledMethod {
 
   private static void initialize(TypeDataBase db) {
     Type type = db.lookupType("nmethod");
+    Type header_type = db.lookupType("nmethod_header");
 
-    entryBCIField               = type.getCIntegerField("_entry_bci");
-    osrLinkField                = type.getAddressField("_osr_link");
+    headerField                 = type.getAddressField("_header");
+    entryBCIField               = header_type.getCIntegerField("_entry_bci");
+    osrLinkField                = header_type.getAddressField("_osr_link");
 
-    exceptionOffsetField        = type.getCIntegerField("_exception_offset");
-    origPCOffsetField           = type.getCIntegerField("_orig_pc_offset");
-    stubOffsetField             = type.getCIntegerField("_stub_offset");
-    oopsOffsetField             = type.getCIntegerField("_oops_offset");
-    metadataOffsetField         = type.getCIntegerField("_metadata_offset");
-    scopesPCsOffsetField        = type.getCIntegerField("_scopes_pcs_offset");
-    dependenciesOffsetField     = type.getCIntegerField("_dependencies_offset");
-    handlerTableOffsetField     = type.getCIntegerField("_handler_table_offset");
-    nulChkTableOffsetField      = type.getCIntegerField("_nul_chk_table_offset");
-    nmethodEndOffsetField       = type.getCIntegerField("_nmethod_end_offset");
-    entryPointField             = type.getAddressField("_entry_point");
-    verifiedEntryPointField     = type.getAddressField("_verified_entry_point");
+    exceptionOffsetField        = header_type.getCIntegerField("_exception_offset");
+    origPCOffsetField           = header_type.getCIntegerField("_orig_pc_offset");
+    stubOffsetField             = header_type.getCIntegerField("_stub_offset");
+    oopsOffsetField             = header_type.getCIntegerField("_oops_offset");
+    metadataOffsetField         = header_type.getCIntegerField("_metadata_offset");
+    scopesPCsOffsetField        = header_type.getCIntegerField("_scopes_pcs_offset");
+    dependenciesOffsetField     = header_type.getCIntegerField("_dependencies_offset");
+    handlerTableOffsetField     = header_type.getCIntegerField("_handler_table_offset");
+    nulChkTableOffsetField      = header_type.getCIntegerField("_nul_chk_table_offset");
+    nmethodEndOffsetField       = header_type.getCIntegerField("_nmethod_end_offset");
+    entryPointField             = header_type.getAddressField("_entry_point");
+    verifiedEntryPointField     = header_type.getAddressField("_verified_entry_point");
     osrEntryPointField          = type.getAddressField("_osr_entry_point");
-    lockCountField              = type.getJIntField("_lock_count");
-    stackTraversalMarkField     = type.getCIntegerField("_stack_traversal_mark");
-    compLevelField              = type.getCIntegerField("_comp_level");
+    lockCountField              = header_type.getJIntField("_lock_count");
+    stackTraversalMarkField     = header_type.getCIntegerField("_stack_traversal_mark");
+    compLevelField              = header_type.getCIntegerField("_comp_level");
     pcDescSize = db.lookupType("PcDesc").getSize();
   }
 
@@ -155,7 +158,7 @@ public class NMethod extends CompiledMethod {
   public int dependenciesSize()         { return (int) dependenciesEnd().minus(dependenciesBegin()); }
   public int handlerTableSize()         { return (int) handlerTableEnd().minus(handlerTableBegin()); }
   public int nulChkTableSize()          { return (int) nulChkTableEnd() .minus(nulChkTableBegin());  }
-  public int origPCOffset()             { return (int) origPCOffsetField.getValue(addr);             }
+  public int origPCOffset()             { return (int) origPCOffsetField.getValue(headerField.getValue(addr));             }
 
   public int totalSize() {
     return
@@ -183,8 +186,8 @@ public class NMethod extends CompiledMethod {
   public int getMetadataLength() { return (int) (metadataSize() / VM.getVM().getOopSize()); }
 
   /** Entry points */
-  public Address getEntryPoint()         { return entryPointField.getValue(addr);         }
-  public Address getVerifiedEntryPoint() { return verifiedEntryPointField.getValue(addr); }
+  public Address getEntryPoint()         { return entryPointField.getValue(headerField.getValue(addr));         }
+  public Address getVerifiedEntryPoint() { return verifiedEntryPointField.getValue(headerField.getValue(addr)); }
 
   /** Support for oops in scopes and relocs. Note: index 0 is reserved for null. */
   public OopHandle getOopAt(int index) {
@@ -246,7 +249,7 @@ public class NMethod extends CompiledMethod {
   }
 
   public NMethod getOSRLink() {
-    return (NMethod) VMObjectFactory.newObject(NMethod.class, osrLinkField.getValue(addr));
+    return (NMethod) VMObjectFactory.newObject(NMethod.class, osrLinkField.getValue(headerField.getValue(addr)));
   }
 
   // MethodHandle
@@ -273,7 +276,7 @@ public class NMethod extends CompiledMethod {
   // FIXME: add inline cache support
   // FIXME: add flush()
 
-  public boolean isLockedByVM() { return lockCountField.getValue(addr) > 0; }
+  public boolean isLockedByVM() { return lockCountField.getValue(headerField.getValue(addr)) > 0; }
 
   // FIXME: add mark_as_seen_on_stack
   // FIXME: add can_not_entrant_be_converted
@@ -514,15 +517,15 @@ public class NMethod extends CompiledMethod {
   // Internals only below this point
   //
 
-  private int getEntryBCI()           { return (int) entryBCIField          .getValue(addr); }
-  private int getExceptionOffset()    { return (int) exceptionOffsetField   .getValue(addr); }
-  private int getStubOffset()         { return (int) stubOffsetField        .getValue(addr); }
-  private int getOopsOffset()         { return (int) oopsOffsetField        .getValue(addr); }
-  private int getMetadataOffset()     { return (int) metadataOffsetField    .getValue(addr); }
-  private int getScopesPCsOffset()    { return (int) scopesPCsOffsetField   .getValue(addr); }
-  private int getDependenciesOffset() { return (int) dependenciesOffsetField.getValue(addr); }
-  private int getHandlerTableOffset() { return (int) handlerTableOffsetField.getValue(addr); }
-  private int getNulChkTableOffset()  { return (int) nulChkTableOffsetField .getValue(addr); }
-  private int getNMethodEndOffset()   { return (int) nmethodEndOffsetField  .getValue(addr); }
-  private int getCompLevel()          { return (int) compLevelField         .getValue(addr); }
+  private int getEntryBCI()           { return (int) entryBCIField          .getValue(headerField.getValue(addr)); }
+  private int getExceptionOffset()    { return (int) exceptionOffsetField   .getValue(headerField.getValue(addr)); }
+  private int getStubOffset()         { return (int) stubOffsetField        .getValue(headerField.getValue(addr)); }
+  private int getOopsOffset()         { return (int) oopsOffsetField        .getValue(headerField.getValue(addr)); }
+  private int getMetadataOffset()     { return (int) metadataOffsetField    .getValue(headerField.getValue(addr)); }
+  private int getScopesPCsOffset()    { return (int) scopesPCsOffsetField   .getValue(headerField.getValue(addr)); }
+  private int getDependenciesOffset() { return (int) dependenciesOffsetField.getValue(headerField.getValue(addr)); }
+  private int getHandlerTableOffset() { return (int) handlerTableOffsetField.getValue(headerField.getValue(addr)); }
+  private int getNulChkTableOffset()  { return (int) nulChkTableOffsetField .getValue(headerField.getValue(addr)); }
+  private int getNMethodEndOffset()   { return (int) nmethodEndOffsetField  .getValue(headerField.getValue(addr)); }
+  private int getCompLevel()          { return (int) compLevelField         .getValue(headerField.getValue(addr)); }
 }

@@ -439,21 +439,21 @@ const char* nmethod::compile_kind() const {
 
 // Fill in default values for various flag fields
 void nmethod::init_defaults() {
-  _state                      = not_installed;
-  _has_flushed_dependencies   = 0;
-  _lock_count                 = 0;
-  _stack_traversal_mark       = 0;
-  _load_reported              = false; // jvmti state
-  _unload_reported            = false;
+  _state                              = not_installed;
+  _header->_has_flushed_dependencies  = 0;
+  _header->_lock_count                = 0;
+  _header->_stack_traversal_mark      = 0;
+  _header->_load_reported             = false; // jvmti state
+  _header->_unload_reported           = false;
 
 #ifdef ASSERT
-  _oops_are_stale             = false;
+  _header->_oops_are_stale            = false;
 #endif
 
-  _oops_do_mark_link       = NULL;
-  _osr_link                = NULL;
+  _oops_do_mark_link                  = NULL;
+  _header->_osr_link                  = NULL;
 #if INCLUDE_RTM_OPT
-  _rtm_state               = NoRTM;
+  _rtm_state                          = NoRTM;
 #endif
 }
 
@@ -480,13 +480,17 @@ nmethod* nmethod::new_native_nmethod(const methodHandle& method,
     if (exception_handler != -1) {
       offsets.set_value(CodeOffsets::Exceptions, exception_handler);
     }
-    nm = new (native_nmethod_size, CompLevel_none)
-    nmethod(method(), compiler_none, native_nmethod_size,
-            compile_id, &offsets,
-            code_buffer, frame_size,
-            basic_lock_owner_sp_offset,
-            basic_lock_sp_offset,
-            oop_maps);
+    nmethod_header *nmh = CodeCache::allocate_nmh();
+    if (nmh != nullptr) {
+      nm = new (native_nmethod_size, CompLevel_none)
+      nmethod(method(), compiler_none, native_nmethod_size,
+              compile_id, &offsets,
+              code_buffer, frame_size,
+              basic_lock_owner_sp_offset,
+              basic_lock_sp_offset,
+              oop_maps,
+              nmh);
+    }
     NOT_PRODUCT(if (nm != NULL)  native_nmethod_stats.note_native_nmethod(nm));
   }
 
@@ -541,20 +545,24 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
 #endif
       + align_up(debug_info->data_size()           , oopSize);
 
-    nm = new (nmethod_size, comp_level)
-    nmethod(method(), compiler->type(), nmethod_size, compile_id, entry_bci, offsets,
-            orig_pc_offset, debug_info, dependencies, code_buffer, frame_size,
-            oop_maps,
-            handler_table,
-            nul_chk_table,
-            compiler,
-            comp_level
+    nmethod_header *nmh = CodeCache::allocate_nmh();
+    if (nmh != nullptr) {
+      nm = new (nmethod_size, comp_level)
+      nmethod(method(), compiler->type(), nmethod_size, compile_id, entry_bci, offsets,
+              orig_pc_offset, debug_info, dependencies, code_buffer, frame_size,
+              oop_maps,
+              handler_table,
+              nul_chk_table,
+              compiler,
+              comp_level
 #if INCLUDE_JVMCI
-            , speculations,
-            speculations_len,
-            jvmci_data_size
+              , speculations,
+              speculations_len,
+              jvmci_data_size
 #endif
-            );
+              , nmh
+              );
+    }
 
     if (nm != NULL) {
 #if INCLUDE_JVMCI
@@ -608,8 +616,10 @@ nmethod::nmethod(
   int frame_size,
   ByteSize basic_lock_owner_sp_offset,
   ByteSize basic_lock_sp_offset,
-  OopMapSet* oop_maps )
+  OopMapSet* oop_maps,
+  nmethod_header* nmh)
   : CompiledMethod(method, "native nmethod", type, nmethod_size, sizeof(nmethod), code_buffer, offsets->value(CodeOffsets::Frame_Complete), frame_size, oop_maps, false, true),
+  _header(nmh),
   _is_unloading_state(0),
   _native_receiver_sp_offset(basic_lock_owner_sp_offset),
   _native_basic_lock_sp_offset(basic_lock_sp_offset)
@@ -623,39 +633,39 @@ nmethod::nmethod(
     assert_locked_or_safepoint(CodeCache_lock);
 
     init_defaults();
-    _entry_bci               = InvocationEntryBci;
+    _header->_entry_bci               = InvocationEntryBci;
     // We have no exception handler or deopt handler make the
     // values something that will never match a pc like the nmethod vtable entry
-    _exception_offset        = 0;
-    _orig_pc_offset          = 0;
-    _gc_epoch                = Continuations::gc_epoch();
+    _header->_exception_offset        = 0;
+    _header->_orig_pc_offset          = 0;
+    _header->_gc_epoch                = Continuations::gc_epoch();
 
-    _consts_offset           = data_offset();
-    _stub_offset             = content_offset()      + code_buffer->total_offset_of(code_buffer->stubs());
-    _oops_offset             = data_offset();
-    _metadata_offset         = _oops_offset          + align_up(code_buffer->total_oop_size(), oopSize);
-    scopes_data_offset       = _metadata_offset      + align_up(code_buffer->total_metadata_size(), wordSize);
-    _scopes_pcs_offset       = scopes_data_offset;
-    _dependencies_offset     = _scopes_pcs_offset;
-    _handler_table_offset    = _dependencies_offset;
-    _nul_chk_table_offset    = _handler_table_offset;
+    _header->_consts_offset           = data_offset();
+    _header->_stub_offset             = content_offset()      + code_buffer->total_offset_of(code_buffer->stubs());
+    _header->_oops_offset             = data_offset();
+    _header->_metadata_offset         = _header->_oops_offset          + align_up(code_buffer->total_oop_size(), oopSize);
+    scopes_data_offset       = _header->_metadata_offset      + align_up(code_buffer->total_metadata_size(), wordSize);
+    _header->_scopes_pcs_offset       = scopes_data_offset;
+    _header->_dependencies_offset     = _header->_scopes_pcs_offset;
+    _header->_handler_table_offset    = _header->_dependencies_offset;
+    _header->_nul_chk_table_offset    = _header->_handler_table_offset;
 #if INCLUDE_JVMCI
-    _speculations_offset     = _nul_chk_table_offset;
-    _jvmci_data_offset       = _speculations_offset;
-    _nmethod_end_offset      = _jvmci_data_offset;
+    _header->_speculations_offset     = _header->_nul_chk_table_offset;
+    _header->_jvmci_data_offset       = _header->_speculations_offset;
+    _header->_nmethod_end_offset      = _header->_jvmci_data_offset;
 #else
-    _nmethod_end_offset      = _nul_chk_table_offset;
+    _header->_nmethod_end_offset      = _nul_chk_table_offset;
 #endif
-    _compile_id              = compile_id;
-    _comp_level              = CompLevel_none;
-    _entry_point             = code_begin()          + offsets->value(CodeOffsets::Entry);
-    _verified_entry_point    = code_begin()          + offsets->value(CodeOffsets::Verified_Entry);
-    _osr_entry_point         = NULL;
-    _exception_cache         = NULL;
+    _header->_compile_id              = compile_id;
+    _header->_comp_level              = CompLevel_none;
+    _header->_entry_point             = code_begin()          + offsets->value(CodeOffsets::Entry);
+    _header->_verified_entry_point    = code_begin()          + offsets->value(CodeOffsets::Verified_Entry);
+    _osr_entry_point                  = NULL;
+    _exception_cache                  = NULL;
     _pc_desc_container.reset_to(NULL);
-    _hotness_counter         = NMethodSweeper::hotness_counter_reset_val();
+    _header->_hotness_counter         = NMethodSweeper::hotness_counter_reset_val();
 
-    _exception_offset        = code_offset()         + offsets->value(CodeOffsets::Exceptions);
+    _header->_exception_offset        = code_offset()         + offsets->value(CodeOffsets::Exceptions);
 
     _scopes_data_begin = (address) this + scopes_data_offset;
     _deopt_handler_begin = (address) this + deoptimize_offset;
@@ -743,8 +753,10 @@ nmethod::nmethod(
   int speculations_len,
   int jvmci_data_size
 #endif
+  , nmethod_header* nmh
   )
   : CompiledMethod(method, "nmethod", type, nmethod_size, sizeof(nmethod), code_buffer, offsets->value(CodeOffsets::Frame_Complete), frame_size, oop_maps, false, true),
+  _header(nmh),
   _is_unloading_state(0),
   _native_receiver_sp_offset(in_ByteSize(-1)),
   _native_basic_lock_sp_offset(in_ByteSize(-1))
@@ -758,25 +770,25 @@ nmethod::nmethod(
     _deopt_mh_handler_begin = (address) this;
 
     init_defaults();
-    _entry_bci               = entry_bci;
-    _compile_id              = compile_id;
-    _comp_level              = comp_level;
-    _orig_pc_offset          = orig_pc_offset;
-    _hotness_counter         = NMethodSweeper::hotness_counter_reset_val();
-    _gc_epoch                = Continuations::gc_epoch();
+    _header->_entry_bci               = entry_bci;
+    _header->_compile_id              = compile_id;
+    _header->_comp_level              = comp_level;
+    _header->_orig_pc_offset          = orig_pc_offset;
+    _header->_hotness_counter         = NMethodSweeper::hotness_counter_reset_val();
+    _header->_gc_epoch                = Continuations::gc_epoch();
 
     // Section offsets
-    _consts_offset           = content_offset()      + code_buffer->total_offset_of(code_buffer->consts());
-    _stub_offset             = content_offset()      + code_buffer->total_offset_of(code_buffer->stubs());
-    set_ctable_begin(header_begin() + _consts_offset);
+    _header->_consts_offset           = content_offset()      + code_buffer->total_offset_of(code_buffer->consts());
+    _header->_stub_offset             = content_offset()      + code_buffer->total_offset_of(code_buffer->stubs());
+    set_ctable_begin(header_begin() + _header->_consts_offset);
 
 #if INCLUDE_JVMCI
     if (compiler->is_jvmci()) {
       // JVMCI might not produce any stub sections
       if (offsets->value(CodeOffsets::Exceptions) != -1) {
-        _exception_offset        = code_offset()          + offsets->value(CodeOffsets::Exceptions);
+        _header->_exception_offset        = code_offset()          + offsets->value(CodeOffsets::Exceptions);
       } else {
-        _exception_offset = -1;
+        _header->_exception_offset = -1;
       }
       if (offsets->value(CodeOffsets::Deopt) != -1) {
         _deopt_handler_begin       = (address) this + code_offset()          + offsets->value(CodeOffsets::Deopt);
@@ -795,37 +807,37 @@ nmethod::nmethod(
       assert(offsets->value(CodeOffsets::Exceptions) != -1, "must be set");
       assert(offsets->value(CodeOffsets::Deopt     ) != -1, "must be set");
 
-      _exception_offset       = _stub_offset          + offsets->value(CodeOffsets::Exceptions);
-      _deopt_handler_begin    = (address) this + _stub_offset          + offsets->value(CodeOffsets::Deopt);
+      _header->_exception_offset       = _header->_stub_offset          + offsets->value(CodeOffsets::Exceptions);
+      _deopt_handler_begin    = (address) this + _header->_stub_offset          + offsets->value(CodeOffsets::Deopt);
       if (offsets->value(CodeOffsets::DeoptMH) != -1) {
-        _deopt_mh_handler_begin  = (address) this + _stub_offset          + offsets->value(CodeOffsets::DeoptMH);
+        _deopt_mh_handler_begin  = (address) this + _header->_stub_offset          + offsets->value(CodeOffsets::DeoptMH);
       } else {
         _deopt_mh_handler_begin  = NULL;
       }
     }
     if (offsets->value(CodeOffsets::UnwindHandler) != -1) {
-      _unwind_handler_offset = code_offset()         + offsets->value(CodeOffsets::UnwindHandler);
+      _header->_unwind_handler_offset = code_offset()         + offsets->value(CodeOffsets::UnwindHandler);
     } else {
-      _unwind_handler_offset = -1;
+      _header->_unwind_handler_offset = -1;
     }
 
-    _oops_offset             = data_offset();
-    _metadata_offset         = _oops_offset          + align_up(code_buffer->total_oop_size(), oopSize);
-    int scopes_data_offset   = _metadata_offset      + align_up(code_buffer->total_metadata_size(), wordSize);
+    _header->_oops_offset             = data_offset();
+    _header->_metadata_offset         = _header->_oops_offset          + align_up(code_buffer->total_oop_size(), oopSize);
+    int scopes_data_offset   = _header->_metadata_offset      + align_up(code_buffer->total_metadata_size(), wordSize);
 
-    _scopes_pcs_offset       = scopes_data_offset    + align_up(debug_info->data_size       (), oopSize);
-    _dependencies_offset     = _scopes_pcs_offset    + adjust_pcs_size(debug_info->pcs_size());
-    _handler_table_offset    = _dependencies_offset  + align_up((int)dependencies->size_in_bytes(), oopSize);
-    _nul_chk_table_offset    = _handler_table_offset + align_up(handler_table->size_in_bytes(), oopSize);
+    _header->_scopes_pcs_offset       = scopes_data_offset    + align_up(debug_info->data_size       (), oopSize);
+    _header->_dependencies_offset     = _header->_scopes_pcs_offset    + adjust_pcs_size(debug_info->pcs_size());
+    _header->_handler_table_offset    = _header->_dependencies_offset  + align_up((int)dependencies->size_in_bytes(), oopSize);
+    _header->_nul_chk_table_offset    = _header->_handler_table_offset + align_up(handler_table->size_in_bytes(), oopSize);
 #if INCLUDE_JVMCI
-    _speculations_offset     = _nul_chk_table_offset + align_up(nul_chk_table->size_in_bytes(), oopSize);
-    _jvmci_data_offset       = _speculations_offset  + align_up(speculations_len, oopSize);
-    _nmethod_end_offset      = _jvmci_data_offset    + align_up(jvmci_data_size, oopSize);
+    _header->_speculations_offset     = _header->_nul_chk_table_offset + align_up(nul_chk_table->size_in_bytes(), oopSize);
+    _header->_jvmci_data_offset       = _header->_speculations_offset  + align_up(speculations_len, oopSize);
+    _header->_nmethod_end_offset      = _header->_jvmci_data_offset    + align_up(jvmci_data_size, oopSize);
 #else
     _nmethod_end_offset      = _nul_chk_table_offset + align_up(nul_chk_table->size_in_bytes(), oopSize);
 #endif
-    _entry_point             = code_begin()          + offsets->value(CodeOffsets::Entry);
-    _verified_entry_point    = code_begin()          + offsets->value(CodeOffsets::Verified_Entry);
+    _header->_entry_point             = code_begin()          + offsets->value(CodeOffsets::Entry);
+    _header->_verified_entry_point    = code_begin()          + offsets->value(CodeOffsets::Verified_Entry);
     _osr_entry_point         = code_begin()          + offsets->value(CodeOffsets::OSR_Entry);
     _exception_cache         = NULL;
     _scopes_data_begin       = (address) this + scopes_data_offset;
@@ -860,7 +872,7 @@ nmethod::nmethod(
     // we use the information of entry points to find out if a method is
     // static or non static
     assert(compiler->is_c2() || compiler->is_jvmci() ||
-           _method->is_static() == (entry_point() == _verified_entry_point),
+           _method->is_static() == (entry_point() == _header->_verified_entry_point),
            " entry points must be same for static methods and vice versa");
   }
 }
@@ -1212,7 +1224,7 @@ void nmethod::mark_as_seen_on_stack() {
 
 void nmethod::mark_as_maybe_on_continuation() {
   assert(is_alive(), "Must be an alive method");
-  _gc_epoch = Continuations::gc_epoch();
+  _header->_gc_epoch = Continuations::gc_epoch();
 }
 
 bool nmethod::is_maybe_on_continuation_stack() {
@@ -1222,7 +1234,7 @@ bool nmethod::is_maybe_on_continuation_stack() {
 
   // If the condition below is true, it means that the nmethod was found to
   // be alive the previous completed marking cycle.
-  return _gc_epoch >= Continuations::previous_completed_gc_marking_cycle();
+  return _header->_gc_epoch >= Continuations::previous_completed_gc_marking_cycle();
 }
 
 // Tell if a non-entrant method can be converted to a zombie (i.e.,
@@ -1375,7 +1387,7 @@ void nmethod::make_unloaded() {
 }
 
 void nmethod::invalidate_osr_method() {
-  assert(_entry_bci != InvocationEntryBci, "wrong kind of nmethod");
+  assert(_header->_entry_bci != InvocationEntryBci, "wrong kind of nmethod");
   // Remove from list of active nmethods
   if (method() != NULL) {
     method()->method_holder()->remove_osr_nmethod(this);
@@ -1566,7 +1578,7 @@ bool nmethod::make_not_entrant_or_zombie(int state) {
 #ifdef ASSERT
     // It's no longer safe to access the oops section since zombie
     // nmethods aren't scanned for GC.
-    _oops_are_stale = true;
+    _header->_oops_are_stale = true;
 #endif
      // the Method may be reclaimed by class unloading now that the
      // nmethod is in zombie state
@@ -1598,7 +1610,7 @@ void nmethod::flush() {
   if (PrintMethodFlushing) {
     tty->print_cr("*flushing %s nmethod %3d/" INTPTR_FORMAT ". Live blobs:" UINT32_FORMAT
                   "/Free CodeCache:" SIZE_FORMAT "Kb",
-                  is_osr_method() ? "osr" : "",_compile_id, p2i(this), CodeCache::blob_count(),
+                  is_osr_method() ? "osr" : "", _header->_compile_id, p2i(this), CodeCache::blob_count(),
                   CodeCache::unallocated_capacity(CodeCache::get_code_blob_type(this))/1024);
   }
 
@@ -2438,15 +2450,15 @@ nmethodLocker::nmethodLocker(address pc) {
 void nmethodLocker::lock_nmethod(CompiledMethod* cm, bool zombie_ok) {
   if (cm == NULL)  return;
   nmethod* nm = cm->as_nmethod();
-  Atomic::inc(&nm->_lock_count);
+  Atomic::inc(&nm->_header->_lock_count);
   assert(zombie_ok || !nm->is_zombie(), "cannot lock a zombie method: %p", nm);
 }
 
 void nmethodLocker::unlock_nmethod(CompiledMethod* cm) {
   if (cm == NULL)  return;
   nmethod* nm = cm->as_nmethod();
-  Atomic::dec(&nm->_lock_count);
-  assert(nm->_lock_count >= 0, "unmatched nmethod lock/unlock");
+  Atomic::dec(&nm->_header->_lock_count);
+  assert(nm->_header->_lock_count >= 0, "unmatched nmethod lock/unlock");
 }
 
 
@@ -3248,7 +3260,7 @@ const char* nmethod::nmethod_section_label(address pos) const {
   if (pos == consts_begin() && pos != insts_begin())                    label = "[Constants]";
   // Check stub_code before checking exception_handler or deopt_handler.
   if (pos == this->stub_begin())                                        label = "[Stub Code]";
-  if (JVMCI_ONLY(_exception_offset >= 0 &&) pos == exception_begin())           label = "[Exception Handler]";
+  if (JVMCI_ONLY(_header->_exception_offset >= 0 &&) pos == exception_begin())           label = "[Exception Handler]";
   if (JVMCI_ONLY(_deopt_handler_begin != NULL &&) pos == deopt_handler_begin()) label = "[Deopt Handler Code]";
   return label;
 }

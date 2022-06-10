@@ -92,6 +92,10 @@ class CodeCache : AllStatic {
   static GrowableArray<CodeHeap*>* _nmethod_heaps;
   static GrowableArray<CodeHeap*>* _allocable_heaps;
 
+  static constexpr int _nmh_limit = 32768;
+  static int _nmh_index;
+  static nmethod_header _nm_headers[_nmh_limit];
+
   static address _low_bound;                            // Lower bound of CodeHeap addresses
   static address _high_bound;                           // Upper bound of CodeHeap addresses
   static int _number_of_nmethods_with_dependencies;     // Total number of nmethods with dependencies
@@ -324,6 +328,9 @@ class CodeCache : AllStatic {
   static void print_space(outputStream *out);
   static void print_age(outputStream *out);
   static void print_names(outputStream *out);
+
+  static nmethod_header *allocate_nmh();
+  static void free_nmh(nmethod_header *nmh);
 };
 
 

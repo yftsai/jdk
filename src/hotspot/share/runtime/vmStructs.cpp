@@ -645,27 +645,28 @@
   /* NMethods (NOTE: incomplete, but only a little) */                                                                               \
   /**************************************************/                                                                               \
                                                                                                                                      \
-  nonstatic_field(nmethod,                     _entry_bci,                                    int)                                   \
-  nonstatic_field(nmethod,                     _osr_link,                                     nmethod*)                              \
+  nonstatic_field(nmethod,                     _header,                                       nmethod_header*)                       \
+  nonstatic_field(nmethod_header,              _entry_bci,                                    int)                                   \
+  nonstatic_field(nmethod_header,              _osr_link,                                     nmethod*)                              \
   nonstatic_field(nmethod,                     _state,                                        volatile signed char)                  \
-  nonstatic_field(nmethod,                     _exception_offset,                             int)                                   \
-  nonstatic_field(nmethod,                     _orig_pc_offset,                               int)                                   \
-  nonstatic_field(nmethod,                     _stub_offset,                                  int)                                   \
-  nonstatic_field(nmethod,                     _consts_offset,                                int)                                   \
-  nonstatic_field(nmethod,                     _oops_offset,                                  int)                                   \
-  nonstatic_field(nmethod,                     _metadata_offset,                              int)                                   \
-  nonstatic_field(nmethod,                     _scopes_pcs_offset,                            int)                                   \
-  nonstatic_field(nmethod,                     _dependencies_offset,                          int)                                   \
-  nonstatic_field(nmethod,                     _handler_table_offset,                         int)                                   \
-  nonstatic_field(nmethod,                     _nul_chk_table_offset,                         int)                                   \
-  nonstatic_field(nmethod,                     _nmethod_end_offset,                           int)                                   \
-  nonstatic_field(nmethod,                     _entry_point,                                  address)                               \
-  nonstatic_field(nmethod,                     _verified_entry_point,                         address)                               \
+  nonstatic_field(nmethod_header,              _exception_offset,                             int)                                   \
+  nonstatic_field(nmethod_header,              _orig_pc_offset,                               int)                                   \
+  nonstatic_field(nmethod_header,              _stub_offset,                                  int)                                   \
+  nonstatic_field(nmethod_header,              _consts_offset,                                int)                                   \
+  nonstatic_field(nmethod_header,              _oops_offset,                                  int)                                   \
+  nonstatic_field(nmethod_header,              _metadata_offset,                              int)                                   \
+  nonstatic_field(nmethod_header,              _scopes_pcs_offset,                            int)                                   \
+  nonstatic_field(nmethod_header,              _dependencies_offset,                          int)                                   \
+  nonstatic_field(nmethod_header,              _handler_table_offset,                         int)                                   \
+  nonstatic_field(nmethod_header,              _nul_chk_table_offset,                         int)                                   \
+  nonstatic_field(nmethod_header,              _nmethod_end_offset,                           int)                                   \
+  nonstatic_field(nmethod_header,              _entry_point,                                  address)                               \
+  nonstatic_field(nmethod_header,              _verified_entry_point,                         address)                               \
   nonstatic_field(nmethod,                     _osr_entry_point,                              address)                               \
-  volatile_nonstatic_field(nmethod,            _lock_count,                                   jint)                                  \
-  volatile_nonstatic_field(nmethod,            _stack_traversal_mark,                         int64_t)                               \
-  nonstatic_field(nmethod,                     _compile_id,                                   int)                                   \
-  nonstatic_field(nmethod,                     _comp_level,                                   int)                                   \
+  volatile_nonstatic_field(nmethod_header,     _lock_count,                                   jint)                                  \
+  volatile_nonstatic_field(nmethod_header,     _stack_traversal_mark,                         int64_t)                               \
+  nonstatic_field(nmethod_header,              _compile_id,                                   int)                                   \
+  nonstatic_field(nmethod_header,              _comp_level,                                   int)                                   \
                                                                                                                                      \
   unchecked_c2_static_field(Deoptimization,    _trap_reason_name,                             void*)                                 \
                                                                                                                                      \
@@ -1996,6 +1997,7 @@
   declare_toplevel_type(jmethodID*)                                       \
   declare_toplevel_type(Mutex*)                                           \
   declare_toplevel_type(nmethod*)                                         \
+  declare_toplevel_type(nmethod_header)                                  \
   COMPILER2_PRESENT(declare_unsigned_integer_type(node_idx_t))            \
   declare_toplevel_type(ObjectMonitor*)                                   \
   declare_toplevel_type(oop*)                                             \

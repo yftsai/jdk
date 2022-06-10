@@ -63,6 +63,82 @@ class FailedSpeculation;
 class JVMCINMethodData;
 #endif
 
+class nmethod;
+
+struct nmethod_header
+{
+  bool _is_used;
+
+  // Shared fields for all nmethod's
+  int       _entry_bci;        // != InvocationEntryBci if this nmethod is an on-stack replacement method
+
+  uint64_t  _gc_epoch;
+
+  // To support simple linked-list chaining of nmethods:
+  nmethod*  _osr_link;         // from InstanceKlass::osr_nmethods_head
+
+  // offsets for entry points
+  address _entry_point;                      // entry point with class check
+  address _verified_entry_point;             // entry point without class check
+
+  // Offsets for different nmethod parts
+  int  _exception_offset;
+  // Offset of the unwind handler if it exists
+  int _unwind_handler_offset;
+
+  int _consts_offset;
+  int _stub_offset;
+  int _oops_offset;                       // offset to where embedded oop table begins (inside data)
+  int _metadata_offset;                   // embedded meta data table
+  int _scopes_pcs_offset;
+  int _dependencies_offset;
+  int _handler_table_offset;
+  int _nul_chk_table_offset;
+#if INCLUDE_JVMCI
+  int _speculations_offset;
+  int _jvmci_data_offset;
+#endif
+  int _nmethod_end_offset;
+
+  // location in frame (offset for sp) that deopt can store the original
+  // pc during a deopt.
+  int _orig_pc_offset;
+
+  int _compile_id;                           // which compilation made this nmethod
+  int _comp_level;                           // compilation level
+
+  // protected by CodeCache_lock
+  bool _has_flushed_dependencies;            // Used for maintenance of dependencies (CodeCache_lock)
+
+  // used by jvmti to track if an event has been posted for this nmethod.
+  bool _unload_reported;
+  bool _load_reported;
+
+#ifdef ASSERT
+  bool _oops_are_stale;  // indicates that it's no longer safe to access oops section
+#endif
+
+  // Nmethod Flushing lock. If non-zero, then the nmethod is not removed
+  // and is not made into a zombie. However, once the nmethod is made into
+  // a zombie, it will be locked one final time if CompiledMethodUnload
+  // event processing needs to be done.
+  volatile jint _lock_count;
+
+  // not_entrant method removal. Each mark_sweep pass will update
+  // this mark to current sweep invocation count if it is seen on the
+  // stack.  An not_entrant method can be removed when there are no
+  // more activations, i.e., when the _stack_traversal_mark is less than
+  // current sweep traversal index.
+  volatile int64_t _stack_traversal_mark;
+
+  // The _hotness_counter indicates the hotness of a method. The higher
+  // the value the hotter the method. The hotness counter of a nmethod is
+  // set to [(ReservedCodeCacheSize / (1024 * 1024)) * 2] each time the method
+  // is active while stack scanning (do_stack_scanning()). The hotness
+  // counter is decreased (by 1) while sweeping.
+  int _hotness_counter;
+};
+
 class nmethod : public CompiledMethod {
   friend class VMStructs;
   friend class JVMCIVMStructs;
@@ -71,13 +147,7 @@ class nmethod : public CompiledMethod {
   friend class JVMCINMethodData;
 
  private:
-  // Shared fields for all nmethod's
-  int       _entry_bci;        // != InvocationEntryBci if this nmethod is an on-stack replacement method
-
-  uint64_t  _gc_epoch;
-
-  // To support simple linked-list chaining of nmethods:
-  nmethod*  _osr_link;         // from InstanceKlass::osr_nmethods_head
+  nmethod_header* _header;
 
   // STW two-phase nmethod root processing helpers.
   //
@@ -194,78 +264,18 @@ class nmethod : public CompiledMethod {
   oops_do_mark_link* volatile _oops_do_mark_link;
 
   // offsets for entry points
-  address _entry_point;                      // entry point with class check
-  address _verified_entry_point;             // entry point without class check
   address _osr_entry_point;                  // entry point for on stack replacement
-
-  // Offsets for different nmethod parts
-  int  _exception_offset;
-  // Offset of the unwind handler if it exists
-  int _unwind_handler_offset;
-
-  int _consts_offset;
-  int _stub_offset;
-  int _oops_offset;                       // offset to where embedded oop table begins (inside data)
-  int _metadata_offset;                   // embedded meta data table
-  int _scopes_data_offset;
-  int _scopes_pcs_offset;
-  int _dependencies_offset;
-  int _handler_table_offset;
-  int _nul_chk_table_offset;
-#if INCLUDE_JVMCI
-  int _speculations_offset;
-  int _jvmci_data_offset;
-#endif
-  int _nmethod_end_offset;
 
   int code_offset() const { return (address) code_begin() - header_begin(); }
 
-  // location in frame (offset for sp) that deopt can store the original
-  // pc during a deopt.
-  int _orig_pc_offset;
-
-  int _compile_id;                           // which compilation made this nmethod
-  int _comp_level;                           // compilation level
-
-  // protected by CodeCache_lock
-  bool _has_flushed_dependencies;            // Used for maintenance of dependencies (CodeCache_lock)
-
-  // used by jvmti to track if an event has been posted for this nmethod.
-  bool _unload_reported;
-  bool _load_reported;
-
   // Protected by CompiledMethod_lock
   volatile signed char _state;               // {not_installed, in_use, not_entrant, zombie, unloaded}
-
-#ifdef ASSERT
-  bool _oops_are_stale;  // indicates that it's no longer safe to access oops section
-#endif
 
 #if INCLUDE_RTM_OPT
   // RTM state at compile time. Used during deoptimization to decide
   // whether to restart collecting RTM locking abort statistic again.
   RTMState _rtm_state;
 #endif
-
-  // Nmethod Flushing lock. If non-zero, then the nmethod is not removed
-  // and is not made into a zombie. However, once the nmethod is made into
-  // a zombie, it will be locked one final time if CompiledMethodUnload
-  // event processing needs to be done.
-  volatile jint _lock_count;
-
-  // not_entrant method removal. Each mark_sweep pass will update
-  // this mark to current sweep invocation count if it is seen on the
-  // stack.  An not_entrant method can be removed when there are no
-  // more activations, i.e., when the _stack_traversal_mark is less than
-  // current sweep traversal index.
-  volatile int64_t _stack_traversal_mark;
-
-  // The _hotness_counter indicates the hotness of a method. The higher
-  // the value the hotter the method. The hotness counter of a nmethod is
-  // set to [(ReservedCodeCacheSize / (1024 * 1024)) * 2] each time the method
-  // is active while stack scanning (do_stack_scanning()). The hotness
-  // counter is decreased (by 1) while sweeping.
-  int _hotness_counter;
 
   // Local state used to keep track of whether unloading is happening or not
   volatile uint8_t _is_unloading_state;
@@ -293,7 +303,8 @@ class nmethod : public CompiledMethod {
           int frame_size,
           ByteSize basic_lock_owner_sp_offset, /* synchronized natives only */
           ByteSize basic_lock_sp_offset,       /* synchronized natives only */
-          OopMapSet* oop_maps);
+          OopMapSet* oop_maps,
+          nmethod_header* nmh);
 
   // Creation support
   nmethod(Method* method,
@@ -317,6 +328,7 @@ class nmethod : public CompiledMethod {
           int speculations_len,
           int jvmci_data_size
 #endif
+          , nmethod_header* nmh
           );
 
   // helper methods
@@ -372,6 +384,7 @@ class nmethod : public CompiledMethod {
   // Only used for unit tests.
   nmethod()
     : CompiledMethod(),
+      _header(nullptr),
       _is_unloading_state(0),
       _native_receiver_sp_offset(in_ByteSize(-1)),
       _native_basic_lock_sp_offset(in_ByteSize(-1)) {}
@@ -390,35 +403,35 @@ class nmethod : public CompiledMethod {
 
   // type info
   bool is_nmethod() const                         { return true; }
-  bool is_osr_method() const                      { return _entry_bci != InvocationEntryBci; }
+  bool is_osr_method() const                      { return _header->_entry_bci != InvocationEntryBci; }
 
   // boundaries for different parts
-  address consts_begin          () const          { return           header_begin() + _consts_offset        ; }
+  address consts_begin          () const          { return           header_begin() + _header->_consts_offset        ; }
   address consts_end            () const          { return           code_begin()                           ; }
-  address stub_begin            () const          { return           header_begin() + _stub_offset          ; }
-  address stub_end              () const          { return           header_begin() + _oops_offset          ; }
-  address exception_begin       () const          { return           header_begin() + _exception_offset     ; }
-  address unwind_handler_begin  () const          { return _unwind_handler_offset != -1 ? (header_begin() + _unwind_handler_offset) : NULL; }
-  oop*    oops_begin            () const          { return (oop*)   (header_begin() + _oops_offset)         ; }
-  oop*    oops_end              () const          { return (oop*)   (header_begin() + _metadata_offset)     ; }
+  address stub_begin            () const          { return           header_begin() + _header->_stub_offset          ; }
+  address stub_end              () const          { return           header_begin() + _header->_oops_offset          ; }
+  address exception_begin       () const          { return           header_begin() + _header->_exception_offset     ; }
+  address unwind_handler_begin  () const          { return _header->_unwind_handler_offset != -1 ? (header_begin() + _header->_unwind_handler_offset) : NULL; }
+  oop*    oops_begin            () const          { return (oop*)   (header_begin() + _header->_oops_offset)         ; }
+  oop*    oops_end              () const          { return (oop*)   (header_begin() + _header->_metadata_offset)     ; }
 
-  Metadata** metadata_begin   () const            { return (Metadata**)  (header_begin() + _metadata_offset)     ; }
+  Metadata** metadata_begin   () const            { return (Metadata**)  (header_begin() + _header->_metadata_offset)     ; }
   Metadata** metadata_end     () const            { return (Metadata**)  _scopes_data_begin; }
 
-  address scopes_data_end       () const          { return           header_begin() + _scopes_pcs_offset    ; }
-  PcDesc* scopes_pcs_begin      () const          { return (PcDesc*)(header_begin() + _scopes_pcs_offset   ); }
-  PcDesc* scopes_pcs_end        () const          { return (PcDesc*)(header_begin() + _dependencies_offset) ; }
-  address dependencies_begin    () const          { return           header_begin() + _dependencies_offset  ; }
-  address dependencies_end      () const          { return           header_begin() + _handler_table_offset ; }
-  address handler_table_begin   () const          { return           header_begin() + _handler_table_offset ; }
-  address handler_table_end     () const          { return           header_begin() + _nul_chk_table_offset ; }
-  address nul_chk_table_begin   () const          { return           header_begin() + _nul_chk_table_offset ; }
+  address scopes_data_end       () const          { return           header_begin() + _header->_scopes_pcs_offset    ; }
+  PcDesc* scopes_pcs_begin      () const          { return (PcDesc*)(header_begin() + _header->_scopes_pcs_offset   ); }
+  PcDesc* scopes_pcs_end        () const          { return (PcDesc*)(header_begin() + _header->_dependencies_offset) ; }
+  address dependencies_begin    () const          { return           header_begin() + _header->_dependencies_offset  ; }
+  address dependencies_end      () const          { return           header_begin() + _header->_handler_table_offset ; }
+  address handler_table_begin   () const          { return           header_begin() + _header->_handler_table_offset ; }
+  address handler_table_end     () const          { return           header_begin() + _header->_nul_chk_table_offset ; }
+  address nul_chk_table_begin   () const          { return           header_begin() + _header->_nul_chk_table_offset ; }
 #if INCLUDE_JVMCI
-  address nul_chk_table_end     () const          { return           header_begin() + _speculations_offset  ; }
-  address speculations_begin    () const          { return           header_begin() + _speculations_offset  ; }
-  address speculations_end      () const          { return           header_begin() + _jvmci_data_offset   ; }
-  address jvmci_data_begin      () const          { return           header_begin() + _jvmci_data_offset    ; }
-  address jvmci_data_end        () const          { return           header_begin() + _nmethod_end_offset   ; }
+  address nul_chk_table_end     () const          { return           header_begin() + _header->_speculations_offset  ; }
+  address speculations_begin    () const          { return           header_begin() + _header->_speculations_offset  ; }
+  address speculations_end      () const          { return           header_begin() + _header->_jvmci_data_offset   ; }
+  address jvmci_data_begin      () const          { return           header_begin() + _header->_jvmci_data_offset    ; }
+  address jvmci_data_end        () const          { return           header_begin() + _header->_nmethod_end_offset   ; }
 #else
   address nul_chk_table_end     () const          { return           header_begin() + _nmethod_end_offset   ; }
 #endif
@@ -437,9 +450,9 @@ class nmethod : public CompiledMethod {
 
   int total_size        () const;
 
-  void dec_hotness_counter()        { _hotness_counter--; }
-  void set_hotness_counter(int val) { _hotness_counter = val; }
-  int  hotness_counter() const      { return _hotness_counter; }
+  void dec_hotness_counter()        { _header->_hotness_counter--; }
+  void set_hotness_counter(int val) { _header->_hotness_counter = val; }
+  int  hotness_counter() const      { return _header->_hotness_counter; }
 
   // Containment
   bool oops_contains         (oop*    addr) const { return oops_begin         () <= addr && addr < oops_end         (); }
@@ -448,8 +461,8 @@ class nmethod : public CompiledMethod {
   bool scopes_pcs_contains   (PcDesc* addr) const { return scopes_pcs_begin   () <= addr && addr < scopes_pcs_end   (); }
 
   // entry points
-  address entry_point() const                     { return _entry_point;             } // normal entry point
-  address verified_entry_point() const            { return _verified_entry_point;    } // if klass is correct
+  address entry_point() const                     { return _header->_entry_point;             } // normal entry point
+  address verified_entry_point() const            { return _header->_verified_entry_point;    } // if klass is correct
 
   // flag accessing and manipulation
   bool  is_not_installed() const                  { return _state == not_installed; }
@@ -492,13 +505,13 @@ class nmethod : public CompiledMethod {
   bool has_dependencies()                         { return dependencies_size() != 0; }
   void print_dependencies()                       PRODUCT_RETURN;
   void flush_dependencies(bool delete_immediately);
-  bool has_flushed_dependencies()                 { return _has_flushed_dependencies; }
+  bool has_flushed_dependencies()                 { return _header->_has_flushed_dependencies; }
   void set_has_flushed_dependencies()             {
     assert(!has_flushed_dependencies(), "should only happen once");
-    _has_flushed_dependencies = 1;
+    _header->_has_flushed_dependencies = 1;
   }
 
-  int   comp_level() const                        { return _comp_level; }
+  int   comp_level() const                        { return _header->_comp_level; }
 
   void unlink_from_method();
 
@@ -509,7 +522,7 @@ class nmethod : public CompiledMethod {
   oop*  oop_addr_at(int index) const {  // for GC
     // relocation indexes are biased by 1 (because 0 is reserved)
     assert(index > 0 && index <= oops_count(), "must be a valid non-zero index");
-    assert(!_oops_are_stale, "oops are stale");
+    assert(!_header->_oops_are_stale, "oops are stale");
     return &oops_begin()[index - 1];
   }
 
@@ -535,15 +548,15 @@ public:
   void fix_oop_relocations()                           { fix_oop_relocations(NULL, NULL, false); }
 
   // Sweeper support
-  int64_t stack_traversal_mark()                  { return _stack_traversal_mark; }
-  void    set_stack_traversal_mark(int64_t l)     { _stack_traversal_mark = l; }
+  int64_t stack_traversal_mark()                  { return _header->_stack_traversal_mark; }
+  void    set_stack_traversal_mark(int64_t l)     { _header->_stack_traversal_mark = l; }
 
   // On-stack replacement support
-  int   osr_entry_bci() const                     { assert(is_osr_method(), "wrong kind of nmethod"); return _entry_bci; }
+  int   osr_entry_bci() const                     { assert(is_osr_method(), "wrong kind of nmethod"); return _header->_entry_bci; }
   address  osr_entry() const                      { assert(is_osr_method(), "wrong kind of nmethod"); return _osr_entry_point; }
   void  invalidate_osr_method();
-  nmethod* osr_link() const                       { return _osr_link; }
-  void     set_osr_link(nmethod *n)               { _osr_link = n; }
+  nmethod* osr_link() const                       { return _header->_osr_link; }
+  void     set_osr_link(nmethod *n)               { _header->_osr_link = n; }
 
   // Verify calls to dead methods have been cleaned.
   void verify_clean_inline_caches();
@@ -559,7 +572,7 @@ public:
   // When true is returned, it is unsafe to remove this nmethod even if
   // it is a zombie, since the VM or the ServiceThread might still be
   // using it.
-  bool is_locked_by_vm() const                    { return _lock_count >0; }
+  bool is_locked_by_vm() const                    { return _header->_lock_count >0; }
 
   // See comment at definition of _last_seen_on_stack
   void mark_as_seen_on_stack();
@@ -624,17 +637,17 @@ public:
   address* orig_pc_addr(const frame* fr);
 
   // used by jvmti to track if the load and unload events has been reported
-  bool  unload_reported() const                   { return _unload_reported; }
-  void  set_unload_reported()                     { _unload_reported = true; }
-  bool  load_reported() const                     { return _load_reported; }
-  void  set_load_reported()                       { _load_reported = true; }
+  bool  unload_reported() const                   { return _header->_unload_reported; }
+  void  set_unload_reported()                     { _header->_unload_reported = true; }
+  bool  load_reported() const                     { return _header->_load_reported; }
+  void  set_load_reported()                       { _header->_load_reported = true; }
 
  public:
   // copying of debugging information
   void copy_scopes_pcs(PcDesc* pcs, int count);
   void copy_scopes_data(address buffer, int size);
 
-  int orig_pc_offset() { return _orig_pc_offset; }
+  int orig_pc_offset() { return _header->_orig_pc_offset; }
 
   // jvmti support:
   void post_compiled_method_load_event(JvmtiThreadState* state = NULL);
@@ -712,7 +725,7 @@ public:
   // are numbered in an independent sequence if CICountOSR is true,
   // and native method wrappers are also numbered independently if
   // CICountNative is true.
-  virtual int compile_id() const { return _compile_id; }
+  virtual int compile_id() const { return _header->_compile_id; }
   const char* compile_kind() const;
 
   // tells if any of this method's dependencies have been invalidated
@@ -740,7 +753,7 @@ public:
   }
 
   // support for code generation
-  static int verified_entry_point_offset()        { return offset_of(nmethod, _verified_entry_point); }
+  // static int verified_entry_point_offset()        { return offset_of(nmethod, _verified_entry_point); }
   static int osr_entry_point_offset()             { return offset_of(nmethod, _osr_entry_point); }
   static int state_offset()                       { return offset_of(nmethod, _state); }
 
