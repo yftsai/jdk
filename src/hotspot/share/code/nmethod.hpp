@@ -433,7 +433,7 @@ class nmethod : public CompiledMethod {
   address jvmci_data_begin      () const          { return           header_begin() + _header->_jvmci_data_offset    ; }
   address jvmci_data_end        () const          { return           header_begin() + _header->_nmethod_end_offset   ; }
 #else
-  address nul_chk_table_end     () const          { return           header_begin() + _nmethod_end_offset   ; }
+  address nul_chk_table_end     () const          { return           header_begin() + _header->_nmethod_end_offset   ; }
 #endif
 
   // Sizes

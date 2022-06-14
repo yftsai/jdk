@@ -654,7 +654,7 @@ nmethod::nmethod(
     _header->_jvmci_data_offset       = _header->_speculations_offset;
     _header->_nmethod_end_offset      = _header->_jvmci_data_offset;
 #else
-    _header->_nmethod_end_offset      = _nul_chk_table_offset;
+    _header->_nmethod_end_offset      = _header->_nul_chk_table_offset;
 #endif
     _header->_compile_id              = compile_id;
     _header->_comp_level              = CompLevel_none;
@@ -834,7 +834,7 @@ nmethod::nmethod(
     _header->_jvmci_data_offset       = _header->_speculations_offset  + align_up(speculations_len, oopSize);
     _header->_nmethod_end_offset      = _header->_jvmci_data_offset    + align_up(jvmci_data_size, oopSize);
 #else
-    _nmethod_end_offset      = _nul_chk_table_offset + align_up(nul_chk_table->size_in_bytes(), oopSize);
+    _header->_nmethod_end_offset      = _header->_nul_chk_table_offset + align_up(nul_chk_table->size_in_bytes(), oopSize);
 #endif
     _header->_entry_point             = code_begin()          + offsets->value(CodeOffsets::Entry);
     _header->_verified_entry_point    = code_begin()          + offsets->value(CodeOffsets::Verified_Entry);
