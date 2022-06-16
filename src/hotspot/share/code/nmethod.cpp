@@ -490,6 +490,10 @@ nmethod* nmethod::new_native_nmethod(const methodHandle& method,
               basic_lock_sp_offset,
               oop_maps,
               nmh);
+
+      if (nm == nullptr) {
+        CodeCache::free_nmh(nmh);
+      }
     }
     NOT_PRODUCT(if (nm != NULL)  native_nmethod_stats.note_native_nmethod(nm));
   }
@@ -562,6 +566,10 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
 #endif
               , nmh
               );
+
+      if (nm == nullptr) {
+        CodeCache::free_nmh(nmh);
+      }
     }
 
     if (nm != NULL) {
@@ -618,7 +626,7 @@ nmethod::nmethod(
   ByteSize basic_lock_sp_offset,
   OopMapSet* oop_maps,
   nmethod_header* nmh)
-  : CompiledMethod(method, "native nmethod", type, nmethod_size, sizeof(nmethod), code_buffer, offsets->value(CodeOffsets::Frame_Complete), frame_size, oop_maps, false, true),
+  : CompiledMethod(nmh, method, "native nmethod", type, nmethod_size, sizeof(nmethod), code_buffer, offsets->value(CodeOffsets::Frame_Complete), frame_size, oop_maps, false, true),
   _header(nmh),
   _is_unloading_state(0),
   _native_receiver_sp_offset(basic_lock_owner_sp_offset),
@@ -661,15 +669,15 @@ nmethod::nmethod(
     _header->_entry_point             = code_begin()          + offsets->value(CodeOffsets::Entry);
     _header->_verified_entry_point    = code_begin()          + offsets->value(CodeOffsets::Verified_Entry);
     _osr_entry_point                  = NULL;
-    _exception_cache                  = NULL;
-    _pc_desc_container.reset_to(NULL);
+    _header->_exception_cache                  = NULL;
+    _header->_pc_desc_container.reset_to(NULL);
     _header->_hotness_counter         = NMethodSweeper::hotness_counter_reset_val();
 
     _header->_exception_offset        = code_offset()         + offsets->value(CodeOffsets::Exceptions);
 
-    _scopes_data_begin = (address) this + scopes_data_offset;
-    _deopt_handler_begin = (address) this + deoptimize_offset;
-    _deopt_mh_handler_begin = (address) this + deoptimize_mh_offset;
+    _header->_scopes_data_begin = (address) this + scopes_data_offset;
+    _header->_deopt_handler_begin = (address) this + deoptimize_offset;
+    _header->_deopt_mh_handler_begin = (address) this + deoptimize_mh_offset;
 
     code_buffer->copy_code_and_locs_to(this);
     code_buffer->copy_values_to(this);
@@ -691,7 +699,7 @@ nmethod::nmethod(
     // be sure to tag this tty output with the compile ID.
     if (xtty != NULL) {
       xtty->begin_head("print_native_nmethod");
-      xtty->method(_method);
+      xtty->method(_header->_method);
       xtty->stamp();
       xtty->end_head(" address='" INTPTR_FORMAT "'", (intptr_t) this);
     }
@@ -755,7 +763,7 @@ nmethod::nmethod(
 #endif
   , nmethod_header* nmh
   )
-  : CompiledMethod(method, "nmethod", type, nmethod_size, sizeof(nmethod), code_buffer, offsets->value(CodeOffsets::Frame_Complete), frame_size, oop_maps, false, true),
+  : CompiledMethod(nmh, method, "nmethod", type, nmethod_size, sizeof(nmethod), code_buffer, offsets->value(CodeOffsets::Frame_Complete), frame_size, oop_maps, false, true),
   _header(nmh),
   _is_unloading_state(0),
   _native_receiver_sp_offset(in_ByteSize(-1)),
@@ -766,8 +774,8 @@ nmethod::nmethod(
     debug_only(NoSafepointVerifier nsv;)
     assert_locked_or_safepoint(CodeCache_lock);
 
-    _deopt_handler_begin = (address) this;
-    _deopt_mh_handler_begin = (address) this;
+    _header->_deopt_handler_begin = (address) this;
+    _header->_deopt_mh_handler_begin = (address) this;
 
     init_defaults();
     _header->_entry_bci               = entry_bci;
@@ -791,14 +799,14 @@ nmethod::nmethod(
         _header->_exception_offset = -1;
       }
       if (offsets->value(CodeOffsets::Deopt) != -1) {
-        _deopt_handler_begin       = (address) this + code_offset()          + offsets->value(CodeOffsets::Deopt);
+        _header->_deopt_handler_begin       = (address) this + code_offset()          + offsets->value(CodeOffsets::Deopt);
       } else {
-        _deopt_handler_begin = NULL;
+        _header->_deopt_handler_begin = NULL;
       }
       if (offsets->value(CodeOffsets::DeoptMH) != -1) {
-        _deopt_mh_handler_begin  = (address) this + code_offset()          + offsets->value(CodeOffsets::DeoptMH);
+        _header->_deopt_mh_handler_begin  = (address) this + code_offset()          + offsets->value(CodeOffsets::DeoptMH);
       } else {
-        _deopt_mh_handler_begin = NULL;
+        _header->_deopt_mh_handler_begin = NULL;
       }
     } else
 #endif
@@ -808,11 +816,11 @@ nmethod::nmethod(
       assert(offsets->value(CodeOffsets::Deopt     ) != -1, "must be set");
 
       _header->_exception_offset       = _header->_stub_offset          + offsets->value(CodeOffsets::Exceptions);
-      _deopt_handler_begin    = (address) this + _header->_stub_offset          + offsets->value(CodeOffsets::Deopt);
+      _header->_deopt_handler_begin    = (address) this + _header->_stub_offset          + offsets->value(CodeOffsets::Deopt);
       if (offsets->value(CodeOffsets::DeoptMH) != -1) {
-        _deopt_mh_handler_begin  = (address) this + _header->_stub_offset          + offsets->value(CodeOffsets::DeoptMH);
+        _header->_deopt_mh_handler_begin  = (address) this + _header->_stub_offset          + offsets->value(CodeOffsets::DeoptMH);
       } else {
-        _deopt_mh_handler_begin  = NULL;
+        _header->_deopt_mh_handler_begin  = NULL;
       }
     }
     if (offsets->value(CodeOffsets::UnwindHandler) != -1) {
@@ -839,10 +847,10 @@ nmethod::nmethod(
     _header->_entry_point             = code_begin()          + offsets->value(CodeOffsets::Entry);
     _header->_verified_entry_point    = code_begin()          + offsets->value(CodeOffsets::Verified_Entry);
     _osr_entry_point         = code_begin()          + offsets->value(CodeOffsets::OSR_Entry);
-    _exception_cache         = NULL;
-    _scopes_data_begin       = (address) this + scopes_data_offset;
+    _header->_exception_cache         = NULL;
+    _header->_scopes_data_begin       = (address) this + scopes_data_offset;
 
-    _pc_desc_container.reset_to(scopes_pcs_begin());
+    _header->_pc_desc_container.reset_to(scopes_pcs_begin());
 
     code_buffer->copy_code_and_locs_to(this);
     // Copy contents of ScopeDescRecorder to nmethod
@@ -872,7 +880,7 @@ nmethod::nmethod(
     // we use the information of entry points to find out if a method is
     // static or non static
     assert(compiler->is_c2() || compiler->is_jvmci() ||
-           _method->is_static() == (entry_point() == _header->_verified_entry_point),
+           _header->_method->is_static() == (entry_point() == _header->_verified_entry_point),
            " entry points must be same for static methods and vice versa");
   }
 }
@@ -1002,7 +1010,7 @@ void nmethod::print_nmethod(bool printmethod) {
 
 #if defined(SUPPORT_DATA_STRUCTS)
   if (AbstractDisassembler::show_structs()) {
-    methodHandle mh(Thread::current(), _method);
+    methodHandle mh(Thread::current(), _header->_method);
     if (printmethod || PrintDebugInfo || CompilerOracle::has_option(mh, CompileCommand::PrintDebugInfo)) {
       print_scopes();
       tty->print_cr("- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ");
@@ -1309,7 +1317,7 @@ void nmethod::make_unloaded() {
     ls.print("making nmethod " INTPTR_FORMAT
              " unloadable, Method*(" INTPTR_FORMAT
              ") ",
-             p2i(this), p2i(_method));
+             p2i(this), p2i(_header->_method));
      ls.cr();
   }
   // Unlink the osr method, so we do not look this up again
@@ -1333,8 +1341,8 @@ void nmethod::make_unloaded() {
   // so we don't have to break the cycle. Note that it is possible to
   // have the Method* live here, in case we unload the nmethod because
   // it is pointing to some oop (other than the Method*) being unloaded.
-  if (_method != NULL) {
-    _method->unlink_code(this);
+  if (_header->_method != NULL) {
+    _header->_method->unlink_code(this);
   }
 
   // Make the class unloaded - i.e., change state and notify sweeper
@@ -1363,7 +1371,7 @@ void nmethod::make_unloaded() {
   log_state_change();
 
   // The Method* is gone at this point
-  assert(_method == NULL, "Tautology");
+  assert(_header->_method == NULL, "Tautology");
 
   set_osr_link(NULL);
   NMethodSweeper::report_state_change(this);
@@ -1761,7 +1769,7 @@ void nmethod::post_compiled_method_unload() {
     return;
   }
 
-  assert(_method != NULL && !is_unloaded(), "just checking");
+  assert(_header->_method != NULL && !is_unloaded(), "just checking");
   DTRACE_METHOD_UNLOAD_PROBE(method());
 
   // If a JVMTI agent has enabled the CompiledMethodUnload event then
@@ -1804,7 +1812,7 @@ void nmethod::metadata_do(MetadataClosure* f) {
                "metadata must be found in exactly one place");
         if (r->metadata_is_immediate() && r->metadata_value() != NULL) {
           Metadata* md = r->metadata_value();
-          if (md != _method) f->do_metadata(md);
+          if (md != _header->_method) f->do_metadata(md);
         }
       } else if (iter.type() == relocInfo::virtual_call_type) {
         // Check compiledIC holders associated with this nmethod
@@ -1832,7 +1840,7 @@ void nmethod::metadata_do(MetadataClosure* f) {
   }
 
   // Visit metadata not embedded in the other places.
-  if (_method != NULL) f->do_metadata(_method);
+  if (_header->_method != NULL) f->do_metadata(_header->_method);
 }
 
 // The _is_unloading_state encodes a tuple comprising the unloading cycle
@@ -2218,7 +2226,7 @@ void nmethod::copy_scopes_pcs(PcDesc* pcs, int count) {
       break;
     }
   }
-  assert(has_method_handle_invokes() == (_deopt_mh_handler_begin != NULL), "must have deopt mh handler");
+  assert(has_method_handle_invokes() == (_header->_deopt_mh_handler_begin != NULL), "must have deopt mh handler");
 
   int size = count * sizeof(PcDesc);
   assert(scopes_pcs_size() >= size, "oob");
@@ -3261,7 +3269,7 @@ const char* nmethod::nmethod_section_label(address pos) const {
   // Check stub_code before checking exception_handler or deopt_handler.
   if (pos == this->stub_begin())                                        label = "[Stub Code]";
   if (JVMCI_ONLY(_header->_exception_offset >= 0 &&) pos == exception_begin())           label = "[Exception Handler]";
-  if (JVMCI_ONLY(_deopt_handler_begin != NULL &&) pos == deopt_handler_begin()) label = "[Deopt Handler Code]";
+  if (JVMCI_ONLY(_header->_deopt_handler_begin != NULL &&) pos == deopt_handler_begin()) label = "[Deopt Handler Code]";
   return label;
 }
 

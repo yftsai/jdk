@@ -615,17 +615,17 @@
   /* CodeBlobs (NOTE: incomplete, but only a little) */                                                                              \
   /***************************************************/                                                                              \
                                                                                                                                      \
-  nonstatic_field(CodeBlob,                 _name,                                   const char*)                                    \
-  nonstatic_field(CodeBlob,                 _size,                                   int)                                            \
-  nonstatic_field(CodeBlob,                 _header_size,                            int)                                            \
-  nonstatic_field(CodeBlob,                 _frame_complete_offset,                  int)                                            \
-  nonstatic_field(CodeBlob,                 _data_offset,                            int)                                            \
-  nonstatic_field(CodeBlob,                 _frame_size,                             int)                                            \
-  nonstatic_field(CodeBlob,                 _oop_maps,                               ImmutableOopMapSet*)                            \
-  nonstatic_field(CodeBlob,                 _code_begin,                             address)                                        \
-  nonstatic_field(CodeBlob,                 _code_end,                               address)                                        \
-  nonstatic_field(CodeBlob,                 _content_begin,                          address)                                        \
-  nonstatic_field(CodeBlob,                 _data_end,                               address)                                        \
+  /*nonstatic_field(CodeBlob,                 _name,                                   const char*)*/                                    \
+  /*nonstatic_field(CodeBlob,                 _size,                                   int)*/                                            \
+  /*nonstatic_field(CodeBlob,                 _header_size,                            int)*/                                            \
+  /*nonstatic_field(CodeBlob,                 _frame_complete_offset,                  int)*/                                            \
+  /*nonstatic_field(CodeBlob,                 _data_offset,                            int)*/                                            \
+  /*nonstatic_field(CodeBlob,                 _frame_size,                             int)*/                                            \
+  /*nonstatic_field(CodeBlob,                 _oop_maps,                               ImmutableOopMapSet*)*/                            \
+  /*nonstatic_field(CodeBlob,                 _code_begin,                             address)*/                                        \
+  /*nonstatic_field(CodeBlob,                 _code_end,                               address)*/                                        \
+  /*nonstatic_field(CodeBlob,                 _content_begin,                          address)*/                                        \
+  /*nonstatic_field(CodeBlob,                 _data_end,                               address)*/                                        \
                                                                                                                                      \
   nonstatic_field(DeoptimizationBlob,          _unpack_offset,                                int)                                   \
                                                                                                                                      \
@@ -635,11 +635,11 @@
   /* CompiledMethod (NOTE: incomplete, but only a little) */                                                                         \
   /********************************************************/                                                                         \
                                                                                                                                      \
-  nonstatic_field(CompiledMethod,                     _method,                                       Method*)                        \
-  volatile_nonstatic_field(CompiledMethod,            _exception_cache,                              ExceptionCache*)                \
-  nonstatic_field(CompiledMethod,                     _scopes_data_begin,                            address)                        \
-  nonstatic_field(CompiledMethod,                     _deopt_handler_begin,                          address)                        \
-  nonstatic_field(CompiledMethod,                     _deopt_mh_handler_begin,                       address)                        \
+  /*nonstatic_field(CompiledMethod,                     _method,                                       Method*)*/                        \
+  /*volatile_nonstatic_field(CompiledMethod,            _exception_cache,                              ExceptionCache*)*/                \
+  /*nonstatic_field(CompiledMethod,                     _scopes_data_begin,                            address)*/                        \
+  /*nonstatic_field(CompiledMethod,                     _deopt_handler_begin,                          address)*/                        \
+  /*nonstatic_field(CompiledMethod,                     _deopt_mh_handler_begin,                       address)*/                        \
                                                                                                                                      \
   /**************************************************/                                                                               \
   /* NMethods (NOTE: incomplete, but only a little) */                                                                               \

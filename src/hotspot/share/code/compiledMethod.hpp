@@ -137,29 +137,9 @@ public:
   }
 };
 
-
-class CompiledMethod : public CodeBlob {
-  friend class VMStructs;
-  friend class NMethodSweeper;
-
-  void init_defaults();
-protected:
-  enum MarkForDeoptimizationStatus : u1 {
-    not_marked,
-    deoptimize,
-    deoptimize_noupdate,
-    deoptimize_done
-  };
-
-  MarkForDeoptimizationStatus _mark_for_deoptimization_status; // Used for stack deoptimization
-
-  // set during construction
-  unsigned int _has_unsafe_access:1;         // May fault due to unsafe access.
-  unsigned int _has_method_handle_invokes:1; // Has this method MethodHandle invokes?
-  unsigned int _has_wide_vectors:1;          // Preserve wide vectors at safepoints
-  unsigned int _has_monitors:1;              // Fastpath monitor detection for continuations
-
-  Method*   _method;
+struct cm_header: public cb_header
+{
+  Method* _method;
   address _scopes_data_begin;
   // All deoptee's will resume execution at this location described by
   // this address.
@@ -172,21 +152,44 @@ protected:
   ExceptionCache * volatile _exception_cache;
 
   void* _gc_data;
+};
+
+class CompiledMethod : public CodeBlob {
+  friend class VMStructs;
+  friend class NMethodSweeper;
+
+  void init_defaults(cm_header *cmh);
+protected:
+  enum MarkForDeoptimizationStatus : u1 {
+    not_marked,
+    deoptimize,
+    deoptimize_noupdate,
+    deoptimize_done
+  };
+
+  virtual cm_header* get_cm_header() const = 0;
+  MarkForDeoptimizationStatus _mark_for_deoptimization_status; // Used for stack deoptimization
+
+  // set during construction
+  unsigned int _has_unsafe_access:1;         // May fault due to unsafe access.
+  unsigned int _has_method_handle_invokes:1; // Has this method MethodHandle invokes?
+  unsigned int _has_wide_vectors:1;          // Preserve wide vectors at safepoints
+  unsigned int _has_monitors:1;              // Fastpath monitor detection for continuations
 
   virtual void flush() = 0;
 
 protected:
-  CompiledMethod(Method* method, const char* name, CompilerType type, const CodeBlobLayout& layout, int frame_complete_offset, int frame_size, ImmutableOopMapSet* oop_maps, bool caller_must_gc_arguments, bool compiled);
-  CompiledMethod(Method* method, const char* name, CompilerType type, int size, int header_size, CodeBuffer* cb, int frame_complete_offset, int frame_size, OopMapSet* oop_maps, bool caller_must_gc_arguments, bool compiled);
+  CompiledMethod(cm_header *cmh, Method* method, const char* name, CompilerType type, const CodeBlobLayout& layout, int frame_complete_offset, int frame_size, ImmutableOopMapSet* oop_maps, bool caller_must_gc_arguments, bool compiled);
+  CompiledMethod(cm_header *cmh, Method* method, const char* name, CompilerType type, int size, int header_size, CodeBuffer* cb, int frame_complete_offset, int frame_size, OopMapSet* oop_maps, bool caller_must_gc_arguments, bool compiled);
 
 public:
   // Only used by unit test.
   CompiledMethod() {}
 
   template<typename T>
-  T* gc_data() const                              { return reinterpret_cast<T*>(_gc_data); }
+  T* gc_data() const                              { return reinterpret_cast<T*>(get_cm_header()->_gc_data); }
   template<typename T>
-  void set_gc_data(T* gc_data)                    { _gc_data = reinterpret_cast<void*>(gc_data); }
+  void set_gc_data(T* gc_data)                    { get_cm_header()->_gc_data = reinterpret_cast<void*>(gc_data); }
 
   bool  has_unsafe_access() const                 { return _has_unsafe_access; }
   void  set_has_unsafe_access(bool z)             { _has_unsafe_access = z; }
@@ -225,10 +228,10 @@ public:
   virtual bool make_zombie() = 0;
   virtual bool is_osr_method() const = 0;
   virtual int osr_entry_bci() const = 0;
-  Method* method() const                          { return _method; }
+  Method* method() const                          { return get_cm_header()->_method; }
   virtual void print_pcs() = 0;
-  bool is_native_method() const { return _method != NULL && _method->is_native(); }
-  bool is_java_method() const { return _method != NULL && !_method->is_native(); }
+  bool is_native_method() const { return get_cm_header()->_method != NULL && get_cm_header()->_method->is_native(); }
+  bool is_java_method() const { return get_cm_header()->_method != NULL && !get_cm_header()->_method->is_native(); }
 
   // ScopeDesc retrieval operation
   PcDesc* pc_desc_at(address pc)   { return find_pc_desc(pc, false); }
@@ -265,7 +268,7 @@ public:
   virtual oop oop_at(int index) const = 0;
   virtual Metadata* metadata_at(int index) const = 0;
 
-  address scopes_data_begin() const { return _scopes_data_begin; }
+  address scopes_data_begin() const { return get_cm_header()->_scopes_data_begin; }
   virtual address scopes_data_end() const = 0;
   int scopes_data_size() const { return scopes_data_end() - scopes_data_begin(); }
 
@@ -310,9 +313,9 @@ public:
 protected:
   // Exception cache support
   // Note: _exception_cache may be read and cleaned concurrently.
-  ExceptionCache* exception_cache() const         { return _exception_cache; }
+  ExceptionCache* exception_cache() const         { return get_cm_header()->_exception_cache; }
   ExceptionCache* exception_cache_acquire() const;
-  void set_exception_cache(ExceptionCache *ec)    { _exception_cache = ec; }
+  void set_exception_cache(ExceptionCache *ec)    { get_cm_header()->_exception_cache = ec; }
 
 public:
   address handler_for_exception_and_pc(Handle exception, address pc);
@@ -324,10 +327,10 @@ public:
 
   // MethodHandle
   bool is_method_handle_return(address return_pc);
-  address deopt_mh_handler_begin() const  { return _deopt_mh_handler_begin; }
+  address deopt_mh_handler_begin() const  { return get_cm_header()->_deopt_mh_handler_begin; }
 
-  address deopt_handler_begin() const { return _deopt_handler_begin; }
-  address* deopt_handler_begin_addr() { return &_deopt_handler_begin; }
+  address deopt_handler_begin() const { return get_cm_header()->_deopt_handler_begin; }
+  address* deopt_handler_begin_addr() { return &get_cm_header()->_deopt_handler_begin; }
   // Deopt
   // Return true is the PC is one would expect if the frame is being deopted.
   inline bool is_deopt_pc(address pc);
@@ -344,6 +347,38 @@ private:
   address* orig_pc_addr(const frame* fr);
 
 public:
+  relocInfo* relocation_begin() const final { return (relocInfo*) get_cm_header()->_relocation_begin; };
+  relocInfo* relocation_end()   const final { return (relocInfo*) get_cm_header()->_relocation_end; }
+  address content_begin()       const final { return get_cm_header()->_content_begin; }
+  address content_end()         const final { return get_cm_header()->_code_end;      }
+  address code_begin()          const final { return get_cm_header()->_code_begin;    }
+  address code_end()            const final { return get_cm_header()->_code_end;      }
+  address data_end()            const final { return get_cm_header()->_data_end;      }
+
+  int size()                    const final { return get_cm_header()->_size; }
+  int frame_size()              const final { return get_cm_header()->_frame_size; }
+  int header_size() const                        { return get_cm_header()->_header_size; }
+  int frame_complete_offset()   const final { return get_cm_header()->_frame_complete_offset; }
+  int data_offset()             const final { return get_cm_header()->_data_offset; };
+
+  void set_size(int sz)               final { get_cm_header()->_size = sz; }
+  void set_code_end(address a)        final { get_cm_header()->_code_end = a; }
+  void set_data_end(address a)        final { get_cm_header()->_data_end = a; }
+  void set_data_offset(int offset)    final { get_cm_header()->_data_offset = offset; }
+  void set_frame_size(int size)       final { get_cm_header()->_frame_size = size; }
+
+  bool is_compiled()              const final { return get_cm_header()->_is_compiled; }
+  const bool* is_compiled_addr()  const final { return &get_cm_header()->_is_compiled; }
+
+  // Returns true, if the next frame is responsible for GC'ing oops passed as arguments
+  bool caller_must_gc_arguments(JavaThread* thread) const final { return get_cm_header()->_caller_must_gc_arguments; }
+
+  ImmutableOopMapSet* oop_maps()  const final { return get_cm_header()->_oop_maps; }
+  void set_oop_maps(OopMapSet* p)       final;
+
+  const char* name()              const final { return get_cm_header()->_name; }
+  void set_name(const char* name)       final { get_cm_header()->_name = name; }
+
   virtual bool can_convert_to_zombie() = 0;
   virtual const char* compile_kind() const = 0;
   virtual int get_state() const = 0;
@@ -420,7 +455,7 @@ public:
 
 private:
   PcDesc* find_pc_desc(address pc, bool approximate) {
-    return _pc_desc_container.find_pc_desc(pc, approximate, PcDescSearch(code_begin(), scopes_pcs_begin(), scopes_pcs_end()));
+    return get_cm_header()->_pc_desc_container.find_pc_desc(pc, approximate, PcDescSearch(code_begin(), scopes_pcs_begin(), scopes_pcs_end()));
   }
 };
 

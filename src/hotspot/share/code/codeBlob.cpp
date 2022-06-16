@@ -78,61 +78,62 @@ unsigned int CodeBlob::allocation_size(CodeBuffer* cb, int header_size) {
   return size;
 }
 
-CodeBlob::CodeBlob(const char* name, CompilerType type, const CodeBlobLayout& layout, int frame_complete_offset, int frame_size, ImmutableOopMapSet* oop_maps, bool caller_must_gc_arguments, bool compiled) :
-  _type(type),
-  _size(layout.size()),
-  _header_size(layout.header_size()),
-  _frame_complete_offset(frame_complete_offset),
-  _data_offset(layout.data_offset()),
-  _frame_size(frame_size),
-  _code_begin(layout.code_begin()),
-  _code_end(layout.code_end()),
-  _content_begin(layout.content_begin()),
-  _data_end(layout.data_end()),
-  _relocation_begin(layout.relocation_begin()),
-  _relocation_end(layout.relocation_end()),
-  _oop_maps(oop_maps),
-  _caller_must_gc_arguments(caller_must_gc_arguments),
-  _is_compiled(compiled),
-  _name(name)
+CodeBlob::CodeBlob(cb_header *cbh, const char* name, CompilerType type, const CodeBlobLayout& layout, int frame_complete_offset, int frame_size, ImmutableOopMapSet* oop_maps, bool caller_must_gc_arguments, bool compiled) :
+  _type(type)
 {
+  cbh->_size = layout.size();
+  cbh->_data_offset = layout.data_offset();
+  cbh->_caller_must_gc_arguments = caller_must_gc_arguments;
+  cbh->_is_compiled = compiled;
+  cbh->_header_size = layout.header_size();
+  cbh->_code_begin = layout.code_begin();
+  cbh->_code_end = layout.code_end();
+  cbh->_content_begin = layout.content_begin();
+  cbh->_data_end = layout.data_end();
+  cbh->_relocation_begin = layout.relocation_begin();
+  cbh->_relocation_end = layout.relocation_end();
+  cbh->_frame_size = frame_size;
+  cbh->_frame_complete_offset = frame_complete_offset;
+  cbh->_name = name;
+  cbh->_oop_maps = oop_maps;
   assert(is_aligned(layout.size(),            oopSize), "unaligned size");
   assert(is_aligned(layout.header_size(),     oopSize), "unaligned size");
   assert(is_aligned(layout.relocation_size(), oopSize), "unaligned size");
   assert(layout.code_end() == layout.content_end(), "must be the same - see code_end()");
 #ifdef COMPILER1
   // probably wrong for tiered
-  assert(_frame_size >= -1, "must use frame size or -1 for runtime stubs");
+  assert(frame_size >= -1, "must use frame size or -1 for runtime stubs");
 #endif // COMPILER1
   S390_ONLY(_ctable_offset = 0;) // avoid uninitialized fields
 }
 
-CodeBlob::CodeBlob(const char* name, CompilerType type, const CodeBlobLayout& layout, CodeBuffer* cb /*UNUSED*/, int frame_complete_offset, int frame_size, OopMapSet* oop_maps, bool caller_must_gc_arguments, bool compiled) :
-  _type(type),
-  _size(layout.size()),
-  _header_size(layout.header_size()),
-  _frame_complete_offset(frame_complete_offset),
-  _data_offset(layout.data_offset()),
-  _frame_size(frame_size),
-  _code_begin(layout.code_begin()),
-  _code_end(layout.code_end()),
-  _content_begin(layout.content_begin()),
-  _data_end(layout.data_end()),
-  _relocation_begin(layout.relocation_begin()),
-  _relocation_end(layout.relocation_end()),
-  _caller_must_gc_arguments(caller_must_gc_arguments),
-  _is_compiled(compiled),
-  _name(name)
+CodeBlob::CodeBlob(cb_header *cbh, const char* name, CompilerType type, const CodeBlobLayout& layout, CodeBuffer* cb /*UNUSED*/, int frame_complete_offset, int frame_size, OopMapSet* oop_maps, bool caller_must_gc_arguments, bool compiled) :
+  _type(type)
 {
-  assert(is_aligned(_size,        oopSize), "unaligned size");
-  assert(is_aligned(_header_size, oopSize), "unaligned size");
-  assert(_data_offset <= _size, "codeBlob is too small");
+  cbh->_size = layout.size();
+  cbh->_data_offset = layout.data_offset();
+  cbh->_caller_must_gc_arguments = caller_must_gc_arguments;
+  cbh->_is_compiled = compiled;
+  cbh->_header_size = layout.header_size();
+  cbh->_code_begin = layout.code_begin();
+  cbh->_code_end = layout.code_end();
+  cbh->_content_begin = layout.content_begin();
+  cbh->_data_end = layout.data_end();
+  cbh->_relocation_begin = layout.relocation_begin();
+  cbh->_relocation_end = layout.relocation_end();
+  cbh->_frame_size = frame_size;
+  cbh->_frame_complete_offset = frame_complete_offset;
+  cbh->_name = name;
+  assert(is_aligned(layout.size(),         oopSize), "unaligned size");
+  assert(is_aligned(layout.header_size(),  oopSize), "unaligned size");
+  assert(layout.data_offset() <= layout.size(), "codeBlob is too small");
   assert(layout.code_end() == layout.content_end(), "must be the same - see code_end()");
 
-  set_oop_maps(oop_maps);
+  // set_oop_maps(oop_maps);
+  cbh->_oop_maps = (oop_maps != NULL) ? ImmutableOopMapSet::build_from(oop_maps) : NULL;
 #ifdef COMPILER1
   // probably wrong for tiered
-  assert(_frame_size >= -1, "must use frame size or -1 for runtime stubs");
+  assert(frame_size >= -1, "must use frame size or -1 for runtime stubs");
 #endif // COMPILER1
   S390_ONLY(_ctable_offset = 0;) // avoid uninitialized fields
 }
@@ -140,7 +141,7 @@ CodeBlob::CodeBlob(const char* name, CompilerType type, const CodeBlobLayout& la
 
 // Creates a simple CodeBlob. Sets up the size of the different regions.
 RuntimeBlob::RuntimeBlob(const char* name, int header_size, int size, int frame_complete, int locs_size)
-  : CodeBlob(name, compiler_none, CodeBlobLayout((address) this, size, header_size, locs_size, size), frame_complete, 0, NULL, false /* caller_must_gc_arguments */)
+  : CodeBlob_(name, compiler_none, CodeBlobLayout((address) this, size, header_size, locs_size, size), frame_complete, 0, NULL, false /* caller_must_gc_arguments */)
 {
   assert(is_aligned(locs_size, oopSize), "unaligned size");
 }
@@ -157,7 +158,7 @@ RuntimeBlob::RuntimeBlob(
   int         frame_size,
   OopMapSet*  oop_maps,
   bool        caller_must_gc_arguments
-) : CodeBlob(name, compiler_none, CodeBlobLayout((address) this, size, header_size, cb), cb, frame_complete, frame_size, oop_maps, caller_must_gc_arguments) {
+) : CodeBlob_(name, compiler_none, CodeBlobLayout((address) this, size, header_size, cb), cb, frame_complete, frame_size, oop_maps, caller_must_gc_arguments) {
   cb->copy_code_and_locs_to(this);
 }
 
@@ -174,13 +175,13 @@ void RuntimeBlob::free(RuntimeBlob* blob) {
 }
 
 void CodeBlob::flush() {
-  FREE_C_HEAP_ARRAY(unsigned char, _oop_maps);
-  _oop_maps = NULL;
+  FREE_C_HEAP_ARRAY(unsigned char, oop_maps());
+  set_oop_maps(NULL);
   NOT_PRODUCT(_asm_remarks.clear());
   NOT_PRODUCT(_dbg_strings.clear());
 }
 
-void CodeBlob::set_oop_maps(OopMapSet* p) {
+void CodeBlob_::set_oop_maps(OopMapSet* p) {
   // Danger Will Robinson! This method allocates a big
   // chunk of memory, its your job to free it.
   if (p != NULL) {
@@ -226,8 +227,8 @@ void RuntimeBlob::trace_new_stub(RuntimeBlob* stub, const char* name1, const cha
 }
 
 const ImmutableOopMap* CodeBlob::oop_map_for_return_address(address return_address) const {
-  assert(_oop_maps != NULL, "nope");
-  return _oop_maps->find_map_at_offset((intptr_t) return_address - (intptr_t) code_begin());
+  assert(oop_maps() != NULL, "nope");
+  return oop_maps()->find_map_at_offset((intptr_t) return_address - (intptr_t) code_begin());
 }
 
 void CodeBlob::print_code() {
@@ -596,7 +597,7 @@ SafepointBlob* SafepointBlob::create(
 
 void CodeBlob::print_on(outputStream* st) const {
   st->print_cr("[CodeBlob (" INTPTR_FORMAT ")]", p2i(this));
-  st->print_cr("Framesize: %d", _frame_size);
+  st->print_cr("Framesize: %d", frame_size());
 }
 
 void CodeBlob::print() const { print_on(tty); }

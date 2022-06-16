@@ -65,7 +65,7 @@ class JVMCINMethodData;
 
 class nmethod;
 
-struct nmethod_header
+struct nmethod_header: public cm_header
 {
   bool _is_used;
 
@@ -352,7 +352,7 @@ class nmethod : public CompiledMethod {
 
   // Offsets
   int content_offset() const                  { return content_begin() - header_begin(); }
-  int data_offset() const                     { return _data_offset; }
+  // int data_offset() const                     { return _header->_data_offset; }
 
   address header_end() const                  { return (address)    header_begin() + header_size(); }
 
@@ -416,7 +416,7 @@ class nmethod : public CompiledMethod {
   oop*    oops_end              () const          { return (oop*)   (header_begin() + _header->_metadata_offset)     ; }
 
   Metadata** metadata_begin   () const            { return (Metadata**)  (header_begin() + _header->_metadata_offset)     ; }
-  Metadata** metadata_end     () const            { return (Metadata**)  _scopes_data_begin; }
+  Metadata** metadata_end     () const            { return (Metadata**)  _header->_scopes_data_begin; }
 
   address scopes_data_end       () const          { return           header_begin() + _header->_scopes_pcs_offset    ; }
   PcDesc* scopes_pcs_begin      () const          { return (PcDesc*)(header_begin() + _header->_scopes_pcs_offset   ); }
@@ -568,6 +568,8 @@ public:
  protected:
   void flush();
 
+  cm_header* get_cm_header() const final { return _header; }
+
  public:
   // When true is returned, it is unsafe to remove this nmethod even if
   // it is a zombie, since the VM or the ServiceThread might still be
@@ -581,7 +583,7 @@ public:
   bool can_convert_to_zombie();
 
   // Evolution support. We make old (discarded) compiled methods point to new Method*s.
-  void set_method(Method* method) { _method = method; }
+  void set_method(Method* method) { _header->_method = method; }
 
 #if INCLUDE_JVMCI
   // Gets the JVMCI name of this nmethod.

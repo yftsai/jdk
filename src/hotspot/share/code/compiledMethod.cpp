@@ -50,35 +50,35 @@
 #include "runtime/mutexLocker.hpp"
 #include "runtime/sharedRuntime.hpp"
 
-CompiledMethod::CompiledMethod(Method* method, const char* name, CompilerType type, const CodeBlobLayout& layout,
+CompiledMethod::CompiledMethod(cm_header *cmh, Method* method, const char* name, CompilerType type, const CodeBlobLayout& layout,
                                int frame_complete_offset, int frame_size, ImmutableOopMapSet* oop_maps,
                                bool caller_must_gc_arguments, bool compiled)
-  : CodeBlob(name, type, layout, frame_complete_offset, frame_size, oop_maps, caller_must_gc_arguments, compiled),
-    _mark_for_deoptimization_status(not_marked),
-    _method(method),
-    _gc_data(NULL)
+  : CodeBlob(cmh, name, type, layout, frame_complete_offset, frame_size, oop_maps, caller_must_gc_arguments, compiled),
+    _mark_for_deoptimization_status(not_marked)
 {
-  init_defaults();
+  cmh->_method = method;
+  cmh->_gc_data = nullptr;
+  init_defaults(cmh);
 }
 
-CompiledMethod::CompiledMethod(Method* method, const char* name, CompilerType type, int size,
+CompiledMethod::CompiledMethod(cm_header *cmh, Method* method, const char* name, CompilerType type, int size,
                                int header_size, CodeBuffer* cb, int frame_complete_offset, int frame_size,
                                OopMapSet* oop_maps, bool caller_must_gc_arguments, bool compiled)
-  : CodeBlob(name, type, CodeBlobLayout((address) this, size, header_size, cb), cb,
+  : CodeBlob(cmh, name, type, CodeBlobLayout((address) this, size, header_size, cb), cb,
              frame_complete_offset, frame_size, oop_maps, caller_must_gc_arguments, compiled),
-    _mark_for_deoptimization_status(not_marked),
-    _method(method),
-    _gc_data(NULL)
+    _mark_for_deoptimization_status(not_marked)
 {
-  init_defaults();
+  cmh->_method = method;
+  cmh->_gc_data = nullptr;
+  init_defaults(cmh);
 }
 
-void CompiledMethod::init_defaults() {
+void CompiledMethod::init_defaults(cm_header *cmh) {
   { // avoid uninitialized fields, even for short time periods
-    _scopes_data_begin          = NULL;
-    _deopt_handler_begin        = NULL;
-    _deopt_mh_handler_begin     = NULL;
-    _exception_cache            = NULL;
+    cmh->_scopes_data_begin          = NULL;
+    cmh->_deopt_handler_begin        = NULL;
+    cmh->_deopt_mh_handler_begin     = NULL;
+    cmh->_exception_cache            = NULL;
   }
   _has_unsafe_access          = 0;
   _has_method_handle_invokes  = 0;
@@ -129,7 +129,7 @@ void CompiledMethod::mark_for_deoptimization(bool inc_recompile_counts) {
 //-----------------------------------------------------------------------------
 
 ExceptionCache* CompiledMethod::exception_cache_acquire() const {
-  return Atomic::load_acquire(&_exception_cache);
+  return Atomic::load_acquire(&get_cm_header()->_exception_cache);
 }
 
 void CompiledMethod::add_exception_cache_entry(ExceptionCache* new_entry) {
@@ -149,7 +149,7 @@ void CompiledMethod::add_exception_cache_entry(ExceptionCache* new_entry) {
         // next pointers always point at live ExceptionCaches, that are not removed due
         // to concurrent ExceptionCache cleanup.
         ExceptionCache* next = ec->next();
-        if (Atomic::cmpxchg(&_exception_cache, ec, next) == ec) {
+        if (Atomic::cmpxchg(&get_cm_header()->_exception_cache, ec, next) == ec) {
           CodeCache::release_exception_cache(ec);
         }
         continue;
@@ -159,7 +159,7 @@ void CompiledMethod::add_exception_cache_entry(ExceptionCache* new_entry) {
         new_entry->set_next(ec);
       }
     }
-    if (Atomic::cmpxchg(&_exception_cache, ec, new_entry) == ec) {
+    if (Atomic::cmpxchg(&get_cm_header()->_exception_cache, ec, new_entry) == ec) {
       return;
     }
   }
@@ -192,7 +192,7 @@ void CompiledMethod::clean_exception_cache() {
         // Try to clean head; this is contended by concurrent inserts, that
         // both lazily clean the head, and insert entries at the head. If
         // the CAS fails, the operation is restarted.
-        if (Atomic::cmpxchg(&_exception_cache, curr, next) != curr) {
+        if (Atomic::cmpxchg(&get_cm_header()->_exception_cache, curr, next) != curr) {
           prev = NULL;
           curr = exception_cache_acquire();
           continue;
@@ -798,10 +798,20 @@ bool CompiledMethod::has_evol_metadata() {
     ResourceMark rm;
     log_debug(redefine, class, nmethod)
             ("Found evol dependency of nmethod %s.%s(%s) compile_id=%d on in nmethod metadata",
-             _method->method_holder()->external_name(),
-             _method->name()->as_C_string(),
-             _method->signature()->as_C_string(),
+             get_cm_header()->_method->method_holder()->external_name(),
+             get_cm_header()->_method->name()->as_C_string(),
+             get_cm_header()->_method->signature()->as_C_string(),
              compile_id());
   }
   return check_evol.has_evol_dependency();
+}
+
+void CompiledMethod::set_oop_maps(OopMapSet* p) {
+  // Danger Will Robinson! This method allocates a big
+  // chunk of memory, its your job to free it.
+  if (p != NULL) {
+    get_cm_header()->_oop_maps = ImmutableOopMapSet::build_from(p);
+  } else {
+    get_cm_header()->_oop_maps = NULL;
+  }
 }

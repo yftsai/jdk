@@ -83,14 +83,8 @@ class UpcallStub; // for as_upcall_stub()
 class RuntimeStub; // for as_runtime_stub()
 class JavaFrameAnchor; // for UpcallStub::jfa_for_frame
 
-class CodeBlob {
-  friend class VMStructs;
-  friend class JVMCIVMStructs;
-  friend class CodeCacheDumper;
-
-protected:
-
-  const CompilerType _type;                      // CompilerType
+struct cb_header
+{
   int        _size;                              // total size of CodeBlob in bytes
   int        _header_size;                       // size of header (depends on subclass)
   int        _frame_complete_offset;             // instruction offsets in [0.._frame_complete_offset) have
@@ -109,11 +103,22 @@ protected:
   address    _relocation_end;
 
   ImmutableOopMapSet* _oop_maps;                 // OopMap for this CodeBlob
+
   bool                _caller_must_gc_arguments;
 
   bool                _is_compiled;
 
   const char*         _name;
+};
+
+class CodeBlob {
+  friend class VMStructs;
+  friend class JVMCIVMStructs;
+  friend class CodeCacheDumper;
+
+protected:
+  const CompilerType _type;                      // CompilerType
+
   S390_ONLY(int       _ctable_offset;)
 
 #ifndef PRODUCT
@@ -126,10 +131,10 @@ protected:
   }
 #endif // not PRODUCT
 
-  CodeBlob(const char* name, CompilerType type, const CodeBlobLayout& layout, int frame_complete_offset,
+  CodeBlob(cb_header *cbh, const char* name, CompilerType type, const CodeBlobLayout& layout, int frame_complete_offset,
            int frame_size, ImmutableOopMapSet* oop_maps,
            bool caller_must_gc_arguments, bool compiled = false);
-  CodeBlob(const char* name, CompilerType type, const CodeBlobLayout& layout, CodeBuffer* cb, int frame_complete_offset,
+  CodeBlob(cb_header *cbh, const char* name, CompilerType type, const CodeBlobLayout& layout, CodeBuffer* cb, int frame_complete_offset,
            int frame_size, OopMapSet* oop_maps,
            bool caller_must_gc_arguments, bool compiled = false);
 public:
@@ -155,8 +160,8 @@ public:
   virtual bool is_vtable_blob() const                 { return false; }
   virtual bool is_method_handles_adapter_blob() const { return false; }
   virtual bool is_upcall_stub() const                 { return false; }
-  bool is_compiled() const                            { return _is_compiled; }
-  const bool* is_compiled_addr() const                { return &_is_compiled; }
+  virtual bool is_compiled() const = 0;
+  virtual const bool* is_compiled_addr() const = 0;
 
   inline bool is_compiled_by_c1() const    { return _type == compiler_c1; };
   inline bool is_compiled_by_c2() const    { return _type == compiler_c2; };
@@ -175,13 +180,19 @@ public:
 
   // Boundaries
   address header_begin() const        { return (address) this; }
-  relocInfo* relocation_begin() const { return (relocInfo*) _relocation_begin; };
-  relocInfo* relocation_end() const   { return (relocInfo*) _relocation_end; }
-  address content_begin() const       { return _content_begin; }
-  address content_end() const         { return _code_end; } // _code_end == _content_end is true for all types of blobs for now, it is also checked in the constructor
-  address code_begin() const          { return _code_begin;    }
-  address code_end() const            { return _code_end; }
-  address data_end() const            { return _data_end;      }
+  virtual relocInfo* relocation_begin() const = 0;
+  virtual relocInfo* relocation_end() const   = 0;
+  virtual address content_begin() const = 0;
+  virtual address content_end() const   = 0;
+  virtual address code_begin() const    = 0;
+  virtual address code_end() const      = 0;
+  virtual address data_end() const      = 0;
+  virtual int data_offset() const = 0;
+
+  virtual void set_size(int sz) = 0;
+  virtual void set_code_end(address a) = 0;
+  virtual void set_data_end(address a) = 0;
+  virtual void set_data_offset(int offset) = 0;
 
   // This field holds the beginning of the const section in the old code buffer.
   // It is needed to fix relocations of pc-relative loads when resizing the
@@ -190,26 +201,26 @@ public:
   void set_ctable_begin(address ctable) { S390_ONLY(_ctable_offset = ctable - header_begin();) }
 
   // Sizes
-  int size() const                               { return _size; }
-  int header_size() const                        { return _header_size; }
+  virtual int size() const = 0;
+  virtual int header_size() const = 0;
   int relocation_size() const                    { return (address) relocation_end() - (address) relocation_begin(); }
   int content_size() const                       { return           content_end()    -           content_begin();    }
   int code_size() const                          { return           code_end()       -           code_begin();       }
   // Only used from CodeCache::free_unused_tail() after the Interpreter blob was trimmed
   void adjust_size(size_t used) {
-    _size = (int)used;
-    _data_offset = (int)used;
-    _code_end = (address)this + used;
-    _data_end = (address)this + used;
+    set_size((int)used);
+    set_data_offset((int)used);
+    set_code_end((address)this + used);
+    set_data_end((address)this + used);
   }
 
   // Containment
   bool blob_contains(address addr) const         { return header_begin()       <= addr && addr < data_end();       }
   bool code_contains(address addr) const         { return code_begin()         <= addr && addr < code_end();       }
   bool contains(address addr) const              { return content_begin()      <= addr && addr < content_end();    }
-  bool is_frame_complete_at(address addr) const  { return _frame_complete_offset != CodeOffsets::frame_never_safe &&
-                                                          code_contains(addr) && addr >= code_begin() + _frame_complete_offset; }
-  int frame_complete_offset() const              { return _frame_complete_offset; }
+  virtual int frame_complete_offset() const = 0;
+  bool is_frame_complete_at(address addr) const  { return frame_complete_offset() != CodeOffsets::frame_never_safe &&
+                                                          code_contains(addr) && addr >= code_begin() + frame_complete_offset(); }
 
   // CodeCache support: really only used by the nmethods, but in order to get
   // asserts and certain bookkeeping to work in the CodeCache they are defined
@@ -224,23 +235,22 @@ public:
   virtual bool is_alive() const                  = 0;
 
   // OopMap for frame
-  ImmutableOopMapSet* oop_maps() const           { return _oop_maps; }
-  void set_oop_maps(OopMapSet* p);
+  virtual ImmutableOopMapSet* oop_maps() const = 0;
+  virtual void set_oop_maps(OopMapSet* p) = 0;
 
   const ImmutableOopMap* oop_map_for_slot(int slot, address return_address) const;
   const ImmutableOopMap* oop_map_for_return_address(address return_address) const;
   virtual void preserve_callee_argument_oops(frame fr, const RegisterMap* reg_map, OopClosure* f) = 0;
 
   // Frame support. Sizes are in word units.
-  int  frame_size() const                        { return _frame_size; }
-  void set_frame_size(int size)                  { _frame_size = size; }
+  virtual int  frame_size() const       = 0;
+  virtual void set_frame_size(int size) = 0;
 
-  // Returns true, if the next frame is responsible for GC'ing oops passed as arguments
-  bool caller_must_gc_arguments(JavaThread* thread) const { return _caller_must_gc_arguments; }
+  virtual bool caller_must_gc_arguments(JavaThread* thread) const = 0;
 
   // Naming
-  const char* name() const                       { return _name; }
-  void set_name(const char* name)                { _name = name; }
+  virtual const char* name() const        = 0;
+  virtual void set_name(const char* name) = 0;
 
   // Debugging
   virtual void verify() = 0;
@@ -360,7 +370,55 @@ public:
 };
 
 
-class RuntimeBlob : public CodeBlob {
+class CodeBlob_: public cb_header, public CodeBlob
+{
+public:
+  CodeBlob_(const char* name, CompilerType type, const CodeBlobLayout& layout, int frame_complete_offset,
+           int frame_size, ImmutableOopMapSet* oop_maps,
+           bool caller_must_gc_arguments, bool compiled = false):
+    CodeBlob(this, name, type, layout, frame_complete_offset, frame_size, oop_maps, caller_must_gc_arguments, compiled)
+  {}
+
+  CodeBlob_(const char* name, CompilerType type, const CodeBlobLayout& layout, CodeBuffer* cb, int frame_complete_offset,
+           int frame_size, OopMapSet* oop_maps,
+           bool caller_must_gc_arguments, bool compiled = false):
+    CodeBlob(this, name, type, layout, cb, frame_complete_offset, frame_size, oop_maps, caller_must_gc_arguments, compiled)
+  {}
+
+  relocInfo* relocation_begin() const final { return (relocInfo*) _relocation_begin; };
+  relocInfo* relocation_end()   const final { return (relocInfo*) _relocation_end; }
+  address content_begin()       const final { return _content_begin;  }
+  address content_end()         const final { return _code_end;       } // _code_end == _content_end is true for all types of blobs for now, it is also checked in the constructor
+  address code_begin()          const final { return _code_begin;     }
+  address code_end()            const final { return _code_end;       }
+  address data_end()            const final { return _data_end;       }
+
+  int size()                    const final { return _size; }
+  int frame_size()              const final { return _frame_size; }
+  int header_size()               const final { return _header_size; }
+  int frame_complete_offset()   const final { return _frame_complete_offset; }
+  int data_offset()             const final { return _data_offset; };
+
+  void set_size(int sz)               final { _size = sz; }
+  void set_code_end(address a)        final { _code_end = a; }
+  void set_data_end(address a)        final { _data_end = a; }
+  void set_data_offset(int offset)    final { _data_offset = offset; }
+  void set_frame_size(int size)       final { _frame_size = size; }
+
+  bool is_compiled()              const final { return _is_compiled; }
+  const bool* is_compiled_addr()  const final { return &_is_compiled; }
+
+  // Returns true, if the next frame is responsible for GC'ing oops passed as arguments
+  bool caller_must_gc_arguments(JavaThread* thread) const final { return _caller_must_gc_arguments; }
+
+  ImmutableOopMapSet* oop_maps()  const final { return _oop_maps; }
+  void set_oop_maps(OopMapSet* p)       final;
+
+  const char* name()              const final { return _name; }
+  void set_name(const char* name)       final { _name = name; }
+};
+
+class RuntimeBlob : public CodeBlob_ {
   friend class VMStructs;
  public:
 
