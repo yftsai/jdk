@@ -30,14 +30,14 @@ public class CodeCacheCLITestBase {
     public static final CodeCacheOptions[] OPTIONS_SET
             = new CodeCacheOptions[] {
             new CodeCacheOptions(CodeCacheOptions.mB(60),
-                    CodeCacheOptions.mB(20), CodeCacheOptions.mB(20),
-                    CodeCacheOptions.mB(20)),
+                    CodeCacheOptions.mB(15), CodeCacheOptions.mB(15),
+                    CodeCacheOptions.mB(15), CodeCacheOptions.mB(15)),
             new CodeCacheOptions(CodeCacheOptions.mB(200),
-                    CodeCacheOptions.mB(75), CodeCacheOptions.mB(75),
-                    CodeCacheOptions.mB(50)),
+                    CodeCacheOptions.mB(60), CodeCacheOptions.mB(60),
+                    CodeCacheOptions.mB(40), CodeCacheOptions.mB(40)),
             new CodeCacheOptions(CodeCacheOptions.mB(300),
-                    CodeCacheOptions.mB(100), CodeCacheOptions.mB(100),
-                    CodeCacheOptions.mB(100)),
+                    CodeCacheOptions.mB(75), CodeCacheOptions.mB(75),
+                    CodeCacheOptions.mB(75), CodeCacheOptions.mB(75)),
             new CodeCacheOptions(CodeCacheOptions.mB(60)),
             new CodeCacheOptions(CodeCacheOptions.mB(200)),
             new CodeCacheOptions(CodeCacheOptions.mB(300))

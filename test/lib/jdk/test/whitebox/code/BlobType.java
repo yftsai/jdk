@@ -55,8 +55,9 @@ public enum BlobType {
                     || type == BlobType.MethodProfiled;
         }
     },
+    Data(3, "CodeHeap 'data'", "DataCodeHeapSize"),
     // All types (No code cache segmentation)
-    All(3, "CodeCache", "ReservedCodeCacheSize");
+    All(4, "CodeCache", "ReservedCodeCacheSize");
 
     public final int id;
     public final String sizeOptionName;

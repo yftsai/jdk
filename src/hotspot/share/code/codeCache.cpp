@@ -176,13 +176,13 @@ GrowableArray<CodeHeap*>* CodeCache::_compiled_heaps = new(ResourceObj::C_HEAP, 
 GrowableArray<CodeHeap*>* CodeCache::_nmethod_heaps = new(ResourceObj::C_HEAP, mtCode) GrowableArray<CodeHeap*> (static_cast<int>(CodeBlobType::All), mtCode);
 GrowableArray<CodeHeap*>* CodeCache::_allocable_heaps = new(ResourceObj::C_HEAP, mtCode) GrowableArray<CodeHeap*> (static_cast<int>(CodeBlobType::All), mtCode);
 
-void CodeCache::check_heap_sizes(size_t non_nmethod_size, size_t profiled_size, size_t non_profiled_size, size_t cache_size, bool all_set) {
-  size_t total_size = non_nmethod_size + profiled_size + non_profiled_size;
+void CodeCache::check_heap_sizes(size_t non_nmethod_size, size_t profiled_size, size_t non_profiled_size, size_t data_size, size_t cache_size, bool all_set) {
+  size_t total_size = non_nmethod_size + profiled_size + non_profiled_size + data_size;
   // Prepare error message
   const char* error = "Invalid code heap sizes";
   err_msg message("NonNMethodCodeHeapSize (" SIZE_FORMAT "K) + ProfiledCodeHeapSize (" SIZE_FORMAT "K)"
-                  " + NonProfiledCodeHeapSize (" SIZE_FORMAT "K) = " SIZE_FORMAT "K",
-          non_nmethod_size/K, profiled_size/K, non_profiled_size/K, total_size/K);
+                  " + NonProfiledCodeHeapSize (" SIZE_FORMAT "K) + DataCodeHeapSize (" SIZE_FORMAT "K) = " SIZE_FORMAT "K",
+          non_nmethod_size/K, profiled_size/K, non_profiled_size/K, data_size/K, total_size/K);
 
   if (total_size > cache_size) {
     // Some code heap sizes were explicitly set: total_size must be <= cache_size
@@ -199,15 +199,18 @@ void CodeCache::initialize_heaps() {
   bool non_nmethod_set      = FLAG_IS_CMDLINE(NonNMethodCodeHeapSize);
   bool profiled_set         = FLAG_IS_CMDLINE(ProfiledCodeHeapSize);
   bool non_profiled_set     = FLAG_IS_CMDLINE(NonProfiledCodeHeapSize);
+  bool data_set             = FLAG_IS_CMDLINE(DataCodeHeapSize);
   size_t min_size           = os::vm_page_size();
   size_t cache_size         = ReservedCodeCacheSize;
   size_t non_nmethod_size   = NonNMethodCodeHeapSize;
   size_t profiled_size      = ProfiledCodeHeapSize;
   size_t non_profiled_size  = NonProfiledCodeHeapSize;
+  size_t data_size          = DataCodeHeapSize;
   // Check if total size set via command line flags exceeds the reserved size
   check_heap_sizes((non_nmethod_set  ? non_nmethod_size  : min_size),
                    (profiled_set     ? profiled_size     : min_size),
                    (non_profiled_set ? non_profiled_size : min_size),
+                   (data_set         ? data_size         : min_size),
                    cache_size,
                    non_nmethod_set && profiled_set && non_profiled_set);
 
@@ -236,11 +239,14 @@ void CodeCache::initialize_heaps() {
       // Use the default value for non_nmethod_size and one half of the
       // remaining size for non-profiled and one half for profiled methods
       size_t remaining_size = cache_size - non_nmethod_size;
+      data_size = remaining_size / 2;
+      remaining_size -= data_size;
       profiled_size = remaining_size / 2;
       non_profiled_size = remaining_size - profiled_size;
     } else {
       // Use all space for the non-nmethod heap and set other heaps to minimal size
-      non_nmethod_size = cache_size - 2 * min_size;
+      non_nmethod_size = cache_size - 3 * min_size;
+      data_size = min_size;
       profiled_size = min_size;
       non_profiled_size = min_size;
     }
@@ -304,7 +310,7 @@ void CodeCache::initialize_heaps() {
   }
 
   // Verify sizes and update flag values
-  assert(non_profiled_size + profiled_size + non_nmethod_size == cache_size, "Invalid code heap sizes");
+  assert(data_size + non_profiled_size + profiled_size + non_nmethod_size == cache_size, "Invalid code heap sizes");
   FLAG_SET_ERGO(NonNMethodCodeHeapSize, non_nmethod_size);
   FLAG_SET_ERGO(ProfiledCodeHeapSize, profiled_size);
   FLAG_SET_ERGO(NonProfiledCodeHeapSize, non_profiled_size);
@@ -312,9 +318,10 @@ void CodeCache::initialize_heaps() {
   // If large page support is enabled, align code heaps according to large
   // page size to make sure that code cache is covered by large pages.
   const size_t alignment = MAX2(page_size(false, 8), (size_t) os::vm_allocation_granularity());
-  non_nmethod_size = align_up(non_nmethod_size, alignment);
-  profiled_size    = align_down(profiled_size, alignment);
+  non_nmethod_size  = align_up(non_nmethod_size, alignment);
+  profiled_size     = align_down(profiled_size, alignment);
   non_profiled_size = align_down(non_profiled_size, alignment);
+  data_size         = align_down(data_size, alignment);
 
   // Reserve one continuous chunk of memory for CodeHeaps and split it into
   // parts for the individual heaps. The memory layout looks like this:
@@ -324,8 +331,10 @@ void CodeCache::initialize_heaps() {
   //      Profiled nmethods
   // ---------- low ------------
   ReservedCodeSpace rs = reserve_heap_memory(cache_size);
-  ReservedSpace profiled_space      = rs.first_part(profiled_size);
-  ReservedSpace rest                = rs.last_part(profiled_size);
+  ReservedSpace data_space          = rs.first_part(data_size);
+  ReservedSpace rest                = rs.last_part(data_size);
+  ReservedSpace profiled_space      = rest.first_part(profiled_size);
+  rest                              = rest.last_part(profiled_size);
   ReservedSpace non_method_space    = rest.first_part(non_nmethod_size);
   ReservedSpace non_profiled_space  = rest.last_part(non_nmethod_size);
 
@@ -335,6 +344,8 @@ void CodeCache::initialize_heaps() {
   add_heap(profiled_space, "CodeHeap 'profiled nmethods'", CodeBlobType::MethodProfiled);
   // Tier 1 and tier 4 (non-profiled) methods and native methods
   add_heap(non_profiled_space, "CodeHeap 'non-profiled nmethods'", CodeBlobType::MethodNonProfiled);
+
+  add_heap(data_space, "CodeHeap 'data'", CodeBlobType::Data);
 }
 
 size_t CodeCache::page_size(bool aligned, size_t min_pages) {
@@ -395,6 +406,9 @@ const char* CodeCache::get_code_heap_flag_name(CodeBlobType code_blob_type) {
     break;
   case CodeBlobType::MethodProfiled:
     return "ProfiledCodeHeapSize";
+    break;
+  case CodeBlobType::Data:
+    return "DataCodeHeapSize";
     break;
   default:
     ShouldNotReachHere();

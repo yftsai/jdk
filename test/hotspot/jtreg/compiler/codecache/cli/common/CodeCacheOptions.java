@@ -46,6 +46,7 @@ public class CodeCacheOptions {
     public final long nonNmethods;
     public final long nonProfiled;
     public final long profiled;
+    public final long data;
     public final boolean segmented;
 
     public static long mB(long val) {
@@ -61,15 +62,17 @@ public class CodeCacheOptions {
         this.nonNmethods = 0;
         this.nonProfiled = 0;
         this.profiled = 0;
+        this.data = 0;
         this.segmented = false;
     }
 
     public CodeCacheOptions(long reserved, long nonNmethods, long nonProfiled,
-            long profiled) {
+            long profiled, long data) {
         this.reserved = reserved;
         this.nonNmethods = nonNmethods;
         this.nonProfiled = nonProfiled;
         this.profiled = profiled;
+        this.data = data;
         this.segmented = true;
     }
 
@@ -83,6 +86,8 @@ public class CodeCacheOptions {
                 return this.nonProfiled;
             case MethodProfiled:
                 return this.profiled;
+            case Data:
+                return this.data;
             default:
                 throw new Error("Unknown heap: " + heap.name());
         }
@@ -105,7 +110,9 @@ public class CodeCacheOptions {
                             BlobType.MethodNonProfiled.sizeOptionName,
                             nonProfiled),
                     CommandLineOptionTest.prepareNumericFlag(
-                            BlobType.MethodProfiled.sizeOptionName, profiled));
+                            BlobType.MethodProfiled.sizeOptionName, profiled),
+                    CommandLineOptionTest.prepareNumericFlag(
+                            BlobType.Data.sizeOptionName, data));
         }
         return options.toArray(new String[options.size()]);
     }
@@ -117,10 +124,10 @@ public class CodeCacheOptions {
             return this;
         } else if (involvedCodeHeaps.equals(SEGMENTED_HEAPS_WO_PROFILED)) {
             return new CodeCacheOptions(reserved, nonNmethods,
-                    profiled + nonProfiled, 0L);
+                    profiled + nonProfiled, 0L, 0L);
         } else if (involvedCodeHeaps.equals(ONLY_NON_METHODS_HEAP)) {
             return new CodeCacheOptions(reserved, nonNmethods + profiled
-                    + nonProfiled, 0L, 0L);
+                    + nonProfiled, 0L, 0L, 0L);
         } else {
             throw new Error("Test bug: unexpected set of code heaps involved "
                     + "into test.");

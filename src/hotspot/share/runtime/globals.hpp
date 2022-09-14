@@ -1555,6 +1555,10 @@ const int ObjectAlignmentInBytes = 8;
           "Size of code heap with non-nmethods (in bytes)")                 \
           constraint(VMPageSizeConstraintFunc, AtParse)                     \
                                                                             \
+  product_pd(uintx, DataCodeHeapSize,                                       \
+          "Size of code heap with data (in bytes)")                         \
+          constraint(VMPageSizeConstraintFunc, AtParse)                     \
+                                                                            \
   product_pd(uintx, CodeCacheExpansionSize,                                 \
           "Code cache expansion size (in bytes)")                           \
           range(32*K, max_uintx)                                            \

@@ -533,6 +533,7 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
     + align_up(jvmci_data_size                   , oopSize)
 #endif
     + align_up(debug_info->data_size()           , oopSize);
+  int code_size = CodeBlob::allocation_size(code_buffer, sizeof(nmethod));
   {
     MutexLocker mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
 
