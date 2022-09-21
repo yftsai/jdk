@@ -157,7 +157,7 @@ RuntimeBlob::RuntimeBlob(
   int         frame_size,
   OopMapSet*  oop_maps,
   bool        caller_must_gc_arguments
-) : CodeBlob(name, compiler_none, CodeBlobLayout((address) this, size, header_size, cb), cb, frame_complete, frame_size, oop_maps, caller_must_gc_arguments) {
+) : CodeBlob(name, compiler_none, CodeBlobLayout((address) this, size, header_size, cb, (address) this), cb, frame_complete, frame_size, oop_maps, caller_must_gc_arguments) {
   cb->copy_code_and_locs_to(this);
 }
 

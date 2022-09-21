@@ -81,6 +81,7 @@ class CodeBlobLayout;
 class UpcallStub; // for as_upcall_stub()
 class RuntimeStub; // for as_runtime_stub()
 class JavaFrameAnchor; // for UpcallStub::jfa_for_frame
+class nmethod_code;
 
 class CodeBlob {
   friend class VMStructs;
@@ -147,6 +148,7 @@ public:
   // Typing
   virtual bool is_buffer_blob() const                 { return false; }
   virtual bool is_nmethod() const                     { return false; }
+  virtual bool is_nmethod_code() const                { return false; }
   virtual bool is_runtime_stub() const                { return false; }
   virtual bool is_deoptimization_stub() const         { return false; }
   virtual bool is_uncommon_trap_stub() const          { return false; }
@@ -168,6 +170,7 @@ public:
   // Casting
   nmethod* as_nmethod_or_null()                { return is_nmethod() ? (nmethod*) this : NULL; }
   nmethod* as_nmethod()                        { assert(is_nmethod(), "must be nmethod"); return (nmethod*) this; }
+  nmethod_code* as_nmethod_code()              { assert(is_nmethod_code(), "must be nmethod_code"); return (nmethod_code*) this; }
   CompiledMethod* as_compiled_method_or_null() { return is_compiled() ? (CompiledMethod*) this : NULL; }
   CompiledMethod* as_compiled_method()         { assert(is_compiled(), "must be compiled"); return (CompiledMethod*) this; }
   CodeBlob* as_codeblob_or_null() const        { return (CodeBlob*) this; }
@@ -314,7 +317,7 @@ public:
     _relocation_end = _relocation_begin + _relocation_size;
   }
 
-  CodeBlobLayout(const address start, int size, int header_size, const CodeBuffer* cb) :
+  CodeBlobLayout(const address start, int size, int header_size, const CodeBuffer* cb, address code_start) :
     _size(size),
     _header_size(header_size),
     _relocation_size(align_up(cb->total_relocation_size(), oopSize)),
@@ -324,14 +327,15 @@ public:
   {
     assert(is_aligned(_relocation_size, oopSize), "unaligned size");
 
-    _code_begin = (address) start + _code_offset;
-    _code_end = (address) start + _data_offset;
+    address s = code_start;
+    _code_begin = (address) s + _code_offset;
+    _code_end = (address) s + _data_offset;
 
-    _content_begin = (address) start + _content_offset;
-    _content_end = (address) start + _data_offset;
+    _content_begin = (address) s + _content_offset;
+    _content_end = (address) s + _data_offset;
 
     _data_end = (address) start + _size;
-    _relocation_begin = (address) start + _header_size;
+    _relocation_begin = (address) s + _header_size;
     _relocation_end = _relocation_begin + _relocation_size;
   }
 

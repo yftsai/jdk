@@ -156,7 +156,7 @@ int BarrierSetNMethod::nmethod_stub_entry_barrier(address* return_address_ptr) {
   CodeBlob* cb = CodeCache::find_blob(return_address);
   assert(cb != NULL, "invariant");
 
-  nmethod* nm = cb->as_nmethod();
+  nmethod* nm = cb->is_nmethod() ? cb->as_nmethod() : cb->as_nmethod_code()->_nmethod;
   BarrierSetNMethod* bs_nm = BarrierSet::barrier_set()->barrier_set_nmethod();
 
   if (!bs_nm->is_armed(nm)) {

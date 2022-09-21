@@ -675,8 +675,13 @@ CodeBlob* CodeCache::find_blob(void* start) {
 
 nmethod* CodeCache::find_nmethod(void* start) {
   CodeBlob* cb = find_blob(start);
-  assert(cb->is_nmethod(), "did not find an nmethod");
-  return (nmethod*)cb;
+  assert(cb != nullptr, "null check");
+  if (cb->is_nmethod()) {
+    return (nmethod*)cb;
+  }
+  else {
+    return cb->as_nmethod_code()->_nmethod;
+  }
 }
 
 void CodeCache::blobs_do(void f(CodeBlob* nm)) {

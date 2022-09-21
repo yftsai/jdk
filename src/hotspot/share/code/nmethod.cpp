@@ -533,10 +533,13 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
     + align_up(jvmci_data_size                   , oopSize)
 #endif
     + align_up(debug_info->data_size()           , oopSize);
+
+  assert(sizeof(nmethod_code) <= sizeof(nmethod), "use space of nmethod as nmethod_code for now");
   int code_size = CodeBlob::allocation_size(code_buffer, sizeof(nmethod));
   {
     MutexLocker mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
 
+    nmethod_code *cb = new (code_size, comp_level) nmethod_code(nmethod_size, frame_size, code_buffer);
     nm = new (nmethod_size, comp_level)
     nmethod(method(), compiler->type(), nmethod_size, compile_id, entry_bci, offsets,
             orig_pc_offset, debug_info, dependencies, code_buffer, frame_size,
@@ -550,7 +553,10 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
             speculations_len,
             jvmci_data_size
 #endif
+            , cb
             );
+    // back reference
+    cb->_nmethod = nm;
 
     if (nm != NULL) {
 #if INCLUDE_JVMCI
@@ -605,11 +611,12 @@ nmethod::nmethod(
   ByteSize basic_lock_owner_sp_offset,
   ByteSize basic_lock_sp_offset,
   OopMapSet* oop_maps )
-  : CompiledMethod(method, "native nmethod", type, nmethod_size, sizeof(nmethod), code_buffer, offsets->value(CodeOffsets::Frame_Complete), frame_size, oop_maps, false, true),
+  : CompiledMethod(method, "native nmethod", type, nmethod_size, sizeof(nmethod), code_buffer, offsets->value(CodeOffsets::Frame_Complete), frame_size, oop_maps, false, true, nullptr),
   _unlinked_next(NULL),
   _native_receiver_sp_offset(basic_lock_owner_sp_offset),
   _native_basic_lock_sp_offset(basic_lock_sp_offset),
-  _is_unloading_state(0)
+  _is_unloading_state(0),
+  _code(nullptr)
 {
   {
     int scopes_data_offset   = 0;
@@ -713,6 +720,10 @@ nmethod::nmethod(
   }
 }
 
+void* nmethod_code::operator new(size_t size, int nmethod_size, int comp_level) throw () {
+  return CodeCache::allocate(nmethod_size, CodeCache::get_code_blob_type(comp_level));
+}
+
 void* nmethod::operator new(size_t size, int nmethod_size, int comp_level) throw () {
   return CodeCache::allocate(nmethod_size, CodeCache::get_code_blob_type(comp_level));
 }
@@ -739,12 +750,14 @@ nmethod::nmethod(
   int speculations_len,
   int jvmci_data_size
 #endif
+  , nmethod_code *code
   )
-  : CompiledMethod(method, "nmethod", type, nmethod_size, sizeof(nmethod), code_buffer, offsets->value(CodeOffsets::Frame_Complete), frame_size, oop_maps, false, true),
+  : CompiledMethod(method, "nmethod", type, nmethod_size, sizeof(nmethod), code_buffer, offsets->value(CodeOffsets::Frame_Complete), frame_size, oop_maps, false, true, code),
   _unlinked_next(NULL),
   _native_receiver_sp_offset(in_ByteSize(-1)),
   _native_basic_lock_sp_offset(in_ByteSize(-1)),
-  _is_unloading_state(0)
+  _is_unloading_state(0),
+  _code(code)
 {
   assert(debug_info->oop_recorder() == code_buffer->oop_recorder(), "shared OR");
   {
@@ -1405,6 +1418,10 @@ void nmethod::flush() {
 
   Universe::heap()->unregister_nmethod(this);
   CodeCache::unregister_old_nmethod(this);
+
+  if (_code != nullptr) {
+    CodeCache::free(_code);
+  }
 
   CodeBlob::flush();
   CodeCache::free(this);
@@ -2279,7 +2296,7 @@ void nmethod::verify_scopes() {
   if (method()->is_native()) return; // Ignore stub methods.
   // iterate through all interrupt point
   // and verify the debug information is valid.
-  RelocIterator iter((nmethod*)this);
+  RelocIterator iter(this);
   while (iter.next()) {
     address stub = NULL;
     switch (iter.type()) {

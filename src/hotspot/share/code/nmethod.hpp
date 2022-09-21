@@ -64,6 +64,26 @@ class FailedSpeculation;
 class JVMCINMethodData;
 #endif
 
+class nmethod_code : public CodeBlob {
+ public:
+  nmethod_code(int nmethod_code_size, int frame_size, CodeBuffer *cb):
+    CodeBlob("nmethod_code", compiler_none,
+             CodeBlobLayout((address) this, nmethod_code_size, sizeof(nmethod_code), cb, (address) this),
+             nullptr,
+             CodeOffsets::frame_never_safe, frame_size, nullptr, false),
+    _nmethod(nullptr)
+  { }
+
+  virtual bool is_nmethod_code() const                { return true; }
+
+  nmethod *_nmethod;
+
+  void preserve_callee_argument_oops(frame fr, const RegisterMap* reg_map, OopClosure* f) { ShouldNotReachHere(); }
+  void verify() {}
+
+  void* operator new(size_t size, int nmethod_size, int comp_level) throw();
+};
+
 class nmethod : public CompiledMethod {
   friend class VMStructs;
   friend class JVMCIVMStructs;
@@ -260,6 +280,8 @@ class nmethod : public CompiledMethod {
   // Protected by CompiledMethod_lock
   volatile signed char _state;         // {not_installed, in_use, not_used, not_entrant}
 
+  nmethod_code *_code;
+
   // For native wrappers
   nmethod(Method* method,
           CompilerType type,
@@ -294,6 +316,7 @@ class nmethod : public CompiledMethod {
           int speculations_len,
           int jvmci_data_size
 #endif
+          , nmethod_code *code
           );
 
   // helper methods

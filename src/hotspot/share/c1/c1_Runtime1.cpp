@@ -450,7 +450,9 @@ static nmethod* counter_overflow_helper(JavaThread* current, int branch_bci, Met
                   RegisterMap::ProcessFrames::include,
                   RegisterMap::WalkContinuation::skip);
   frame fr =  current->last_frame().sender(&map);
-  nmethod* nm = (nmethod*) fr.cb();
+  CodeBlob* blob = fr.cb();
+  assert(blob!= NULL, "Sanity check");
+  nmethod* nm = blob->is_nmethod() ? (nmethod*) blob : ((nmethod_code*)blob)->_nmethod;
   assert(nm!= NULL && nm->is_nmethod(), "Sanity check");
   methodHandle enclosing_method(current, nm->method());
 
