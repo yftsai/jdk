@@ -485,7 +485,10 @@ void* CodeHeap::find_start(void* p) const {
 // Same as find_start(p), but with additional safety net.
 CodeBlob* CodeHeap::find_blob(void* start) const {
   CodeBlob* result = (CodeBlob*)CodeHeap::find_start(start);
-  return (result != NULL && result->blob_contains((address)start)) ? result : NULL;
+  if (result != NULL && result->blob_contains((address)start))
+    return !result->is_nmethod_code() ? result : (CodeBlob*)result->as_nmethod_code()->_nmethod;
+  else
+    return NULL;
 }
 
 size_t CodeHeap::alignment_unit() const {

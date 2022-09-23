@@ -539,7 +539,7 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
   {
     MutexLocker mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
 
-    nmethod_code *cb = new (code_size, comp_level) nmethod_code(nmethod_size, frame_size, code_buffer);
+    nmethod_code *cb = new (code_size, comp_level) nmethod_code(code_size, frame_size, code_buffer);
     nm = new (nmethod_size, comp_level)
     nmethod(method(), compiler->type(), nmethod_size, compile_id, entry_bci, offsets,
             orig_pc_offset, debug_info, dependencies, code_buffer, frame_size,
@@ -555,8 +555,6 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
 #endif
             , cb
             );
-    // back reference
-    cb->_nmethod = nm;
 
     if (nm != NULL) {
 #if INCLUDE_JVMCI
@@ -725,7 +723,7 @@ void* nmethod_code::operator new(size_t size, int nmethod_size, int comp_level) 
 }
 
 void* nmethod::operator new(size_t size, int nmethod_size, int comp_level) throw () {
-  return CodeCache::allocate(nmethod_size, CodeCache::get_code_blob_type(comp_level));
+  return CodeCache::allocate(nmethod_size, CodeBlobType::Data);
 }
 
 nmethod::nmethod(
@@ -759,6 +757,7 @@ nmethod::nmethod(
   _is_unloading_state(0),
   _code(code)
 {
+  if (_code != nullptr) _code->_nmethod = this;
   assert(debug_info->oop_recorder() == code_buffer->oop_recorder(), "shared OR");
   {
     debug_only(NoSafepointVerifier nsv;)
@@ -777,7 +776,8 @@ nmethod::nmethod(
     // Section offsets
     _consts_offset           = content_offset()      + code_buffer->total_offset_of(code_buffer->consts());
     _stub_offset             = content_offset()      + code_buffer->total_offset_of(code_buffer->stubs());
-    set_ctable_begin(header_begin() + _consts_offset);
+    if (_code != nullptr) set_ctable_begin(_code->header_begin() + _consts_offset);
+    else                  set_ctable_begin(       header_begin() + _consts_offset);
 
 #if INCLUDE_JVMCI
     if (compiler->is_jvmci()) {
@@ -788,12 +788,14 @@ nmethod::nmethod(
         _exception_offset = -1;
       }
       if (offsets->value(CodeOffsets::Deopt) != -1) {
-        _deopt_handler_begin       = (address) this + code_offset()          + offsets->value(CodeOffsets::Deopt);
+        if (_code != nullptr) _deopt_handler_begin       = (address) _code + code_offset()         + offsets->value(CodeOffsets::Deopt);
+        else                  _deopt_handler_begin       = (address) this  + code_offset()         + offsets->value(CodeOffsets::Deopt);
       } else {
         _deopt_handler_begin = NULL;
       }
       if (offsets->value(CodeOffsets::DeoptMH) != -1) {
-        _deopt_mh_handler_begin  = (address) this + code_offset()          + offsets->value(CodeOffsets::DeoptMH);
+        if (_code != nullptr) _deopt_mh_handler_begin  = (address) _code + code_offset()         + offsets->value(CodeOffsets::DeoptMH);
+        else                  _deopt_mh_handler_begin  = (address) this  + code_offset()         + offsets->value(CodeOffsets::DeoptMH);
       } else {
         _deopt_mh_handler_begin = NULL;
       }
@@ -805,9 +807,11 @@ nmethod::nmethod(
       assert(offsets->value(CodeOffsets::Deopt     ) != -1, "must be set");
 
       _exception_offset       = _stub_offset          + offsets->value(CodeOffsets::Exceptions);
-      _deopt_handler_begin    = (address) this + _stub_offset          + offsets->value(CodeOffsets::Deopt);
+      if (_code != nullptr) _deopt_handler_begin    = (address) _code + _stub_offset         + offsets->value(CodeOffsets::Deopt);
+      else                  _deopt_handler_begin    = (address) this  + _stub_offset         + offsets->value(CodeOffsets::Deopt);
       if (offsets->value(CodeOffsets::DeoptMH) != -1) {
-        _deopt_mh_handler_begin  = (address) this + _stub_offset          + offsets->value(CodeOffsets::DeoptMH);
+        if (_code != nullptr) _deopt_mh_handler_begin  = (address) _code + _stub_offset         + offsets->value(CodeOffsets::DeoptMH);
+        else                  _deopt_mh_handler_begin  = (address) this  + _stub_offset         + offsets->value(CodeOffsets::DeoptMH);
       } else {
         _deopt_mh_handler_begin  = NULL;
       }
@@ -1110,7 +1114,7 @@ void nmethod::finalize_relocations() {
 
   // Make sure that post call nops fill in nmethod offsets eagerly so
   // we don't have to race with deoptimization
-  RelocIterator iter(this);
+  RelocIterator iter((nmethod*)this);
   while (iter.next()) {
     if (iter.type() == relocInfo::post_call_nop_type) {
       post_call_nop_Relocation* const reloc = iter.post_call_nop_reloc();

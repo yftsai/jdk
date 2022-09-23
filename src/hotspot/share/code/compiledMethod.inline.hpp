@@ -30,6 +30,7 @@
 #include "code/nativeInst.hpp"
 #include "runtime/atomic.hpp"
 #include "runtime/frame.hpp"
+#include "code/nmethod.hpp"
 
 inline bool CompiledMethod::is_deopt_pc(address pc) { return is_deopt_entry(pc) || is_deopt_mh_entry(pc); }
 
@@ -60,7 +61,7 @@ inline bool CompiledMethod::is_deopt_mh_entry(address pc) {
 inline address CompiledMethod::get_deopt_original_pc(const frame* fr) {
   if (fr->cb() == NULL)  return NULL;
 
-  CompiledMethod* cm = fr->cb()->as_compiled_method_or_null();
+  CompiledMethod* cm = !fr->cb()->is_nmethod_code() ? fr->cb()->as_compiled_method_or_null() : fr->cb()->as_nmethod_code()->_nmethod->as_compiled_method();
   if (cm != NULL && cm->is_deopt_pc(fr->pc()))
     return cm->get_original_pc(fr);
 

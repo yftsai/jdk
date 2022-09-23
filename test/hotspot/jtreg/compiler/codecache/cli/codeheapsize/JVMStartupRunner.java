@@ -49,6 +49,7 @@ public class JVMStartupRunner implements CodeCacheCLITestCase.Runner {
                 "JVM startup should not fail with consistent code heap sizes",
                 "JVM output should not contain warning about inconsistent code "
                 + "heap sizes", ExitCode.OK, options.prepareOptions());
+
         verifySingleInconsistentValue(options);
         verifyAllInconsistentValues(options);
     }

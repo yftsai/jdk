@@ -260,12 +260,12 @@ class CodeCache : AllStatic {
   }
 
   static bool code_blob_type_accepts_compiled(CodeBlobType code_blob_type) {
-    bool result = code_blob_type == CodeBlobType::All || code_blob_type <= CodeBlobType::MethodProfiled;
+    bool result = code_blob_type == CodeBlobType::All || code_blob_type <= CodeBlobType::MethodProfiled || code_blob_type == CodeBlobType::Data;
     return result;
   }
 
   static bool code_blob_type_accepts_nmethod(CodeBlobType type) {
-    return type == CodeBlobType::All || type <= CodeBlobType::MethodProfiled;
+    return type == CodeBlobType::All || type <= CodeBlobType::MethodProfiled || type == CodeBlobType::Data;
   }
 
   static bool code_blob_type_accepts_allocable(CodeBlobType type) {

@@ -230,7 +230,6 @@ class nmethod : public CompiledMethod {
   int _stub_offset;
   int _oops_offset;                       // offset to where embedded oop table begins (inside data)
   int _metadata_offset;                   // embedded meta data table
-  int _scopes_data_offset;
   int _scopes_pcs_offset;
   int _dependencies_offset;
   int _handler_table_offset;
@@ -241,7 +240,9 @@ class nmethod : public CompiledMethod {
 #endif
   int _nmethod_end_offset;
 
-  int code_offset() const { return (address) code_begin() - header_begin(); }
+  int code_offset() const {
+    if (_code != nullptr) return (address) code_begin() - _code->header_begin();
+    else                  return (address) code_begin() -        header_begin(); }
 
   // location in frame (offset for sp) that deopt can store the original
   // pc during a deopt.
@@ -338,7 +339,10 @@ class nmethod : public CompiledMethod {
   void init_defaults();
 
   // Offsets
-  int content_offset() const                  { return content_begin() - header_begin(); }
+  int content_offset() const                  {
+    if (_code == nullptr) return content_begin() -        header_begin();
+    else                  return content_begin() - _code->header_begin();
+  }
   int data_offset() const                     { return _data_offset; }
 
   address header_end() const                  { return (address)    header_begin() + header_size(); }
@@ -392,12 +396,25 @@ class nmethod : public CompiledMethod {
   bool is_osr_method() const                      { return _entry_bci != InvocationEntryBci; }
 
   // boundaries for different parts
-  address consts_begin          () const          { return           header_begin() + _consts_offset        ; }
+  address consts_begin          () const          {
+    if (_code == nullptr) return        header_begin() + _consts_offset;
+    else                  return _code->header_begin() + _consts_offset; }
   address consts_end            () const          { return           code_begin()                           ; }
-  address stub_begin            () const          { return           header_begin() + _stub_offset          ; }
-  address stub_end              () const          { return           header_begin() + _oops_offset          ; }
-  address exception_begin       () const          { return           header_begin() + _exception_offset     ; }
-  address unwind_handler_begin  () const          { return _unwind_handler_offset != -1 ? (header_begin() + _unwind_handler_offset) : NULL; }
+  address stub_begin            () const          {
+    if (_code == nullptr) return        header_begin() + _stub_offset;
+    else                  return _code->header_begin() + _stub_offset;
+  }
+  address stub_end              () const          {
+    if (_code == nullptr) return        header_begin() + _oops_offset;
+    else                  return _code->header_begin() + _oops_offset;
+  }
+  address exception_begin       () const          {
+    if (_code != nullptr) return    _code->header_begin() + _exception_offset     ;
+    else                  return           header_begin() + _exception_offset     ; }
+  address unwind_handler_begin  () const          {
+    if (_unwind_handler_offset != -1 && _code != nullptr) return                          _code->header_begin() + _unwind_handler_offset;
+    else                                                  return _unwind_handler_offset != -1 ? (header_begin() + _unwind_handler_offset) : NULL;
+  }
   oop*    oops_begin            () const          { return (oop*)   (header_begin() + _oops_offset)         ; }
   oop*    oops_end              () const          { return (oop*)   (header_begin() + _metadata_offset)     ; }
 
