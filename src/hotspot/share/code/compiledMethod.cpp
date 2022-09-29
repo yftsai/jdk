@@ -63,8 +63,8 @@ CompiledMethod::CompiledMethod(Method* method, const char* name, CompilerType ty
 
 CompiledMethod::CompiledMethod(Method* method, const char* name, CompilerType type, int size,
                                int header_size, CodeBuffer* cb, int frame_complete_offset, int frame_size,
-                               OopMapSet* oop_maps, bool caller_must_gc_arguments, bool compiled, nmethod_code *code)
-  : CodeBlob(name, type, CodeBlobLayout((address) this, size, header_size, cb, (code == nullptr) ? (address) this : (address) code), cb,
+                               OopMapSet* oop_maps, bool caller_must_gc_arguments, bool compiled, nmethod_code *code, int code_header_size)
+  : CodeBlob(name, type, CodeBlobLayout((address) this, size, header_size, cb, (code == nullptr) ? (address) this : (address) code, (code == nullptr) ? header_size : code_header_size), cb,
              frame_complete_offset, frame_size, oop_maps, caller_must_gc_arguments, compiled),
     _mark_for_deoptimization_status(not_marked),
     _method(method),

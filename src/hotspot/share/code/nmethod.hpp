@@ -68,7 +68,7 @@ class nmethod_code : public CodeBlob {
  public:
   nmethod_code(int nmethod_code_size, int frame_size, CodeBuffer *cb):
     CodeBlob("nmethod_code", compiler_none,
-             CodeBlobLayout((address) this, nmethod_code_size, sizeof(nmethod_code), cb, (address) this),
+             CodeBlobLayout((address) this, nmethod_code_size, sizeof(nmethod_code), cb, (address) this, sizeof(nmethod_code)),
              nullptr,
              CodeOffsets::frame_never_safe, frame_size, nullptr, false),
     _nmethod(nullptr)
@@ -76,12 +76,14 @@ class nmethod_code : public CodeBlob {
 
   virtual bool is_nmethod_code() const                { return true; }
 
+  int data_offset() const                     { return _data_offset; }
+
   nmethod *_nmethod;
 
   void preserve_callee_argument_oops(frame fr, const RegisterMap* reg_map, OopClosure* f) { ShouldNotReachHere(); }
   void verify() {}
 
-  void* operator new(size_t size, int nmethod_size, int comp_level) throw();
+  void* operator new(size_t, int nmethod_code_size, int comp_level) throw();
 };
 
 class nmethod : public CompiledMethod {
@@ -229,6 +231,7 @@ class nmethod : public CompiledMethod {
   int _consts_offset;
   int _stub_offset;
   int _oops_offset;                       // offset to where embedded oop table begins (inside data)
+  int _oops_end_offset;
   int _metadata_offset;                   // embedded meta data table
   int _scopes_pcs_offset;
   int _dependencies_offset;
@@ -241,8 +244,8 @@ class nmethod : public CompiledMethod {
   int _nmethod_end_offset;
 
   int code_offset() const {
-    if (_code != nullptr) return (address) code_begin() - _code->header_begin();
-    else                  return (address) code_begin() -        header_begin(); }
+    if (_code == nullptr) return (address) code_begin() -        header_begin();
+    else                  return (address) code_begin() - _code->header_begin(); }
 
   // location in frame (offset for sp) that deopt can store the original
   // pc during a deopt.
@@ -409,18 +412,18 @@ class nmethod : public CompiledMethod {
     else                  return _code->header_begin() + _oops_offset;
   }
   address exception_begin       () const          {
-    if (_code != nullptr) return    _code->header_begin() + _exception_offset     ;
-    else                  return           header_begin() + _exception_offset     ; }
+    if (_code == nullptr) return           header_begin() + _exception_offset     ;
+    else                  return    _code->header_begin() + _exception_offset     ; }
   address unwind_handler_begin  () const          {
-    if (_unwind_handler_offset != -1 && _code != nullptr) return                          _code->header_begin() + _unwind_handler_offset;
-    else                                                  return _unwind_handler_offset != -1 ? (header_begin() + _unwind_handler_offset) : NULL;
+    if (_code == nullptr) return _unwind_handler_offset != -1 ? (       header_begin() + _unwind_handler_offset) : NULL;
+    else                  return _unwind_handler_offset != -1 ? (_code->header_begin() + _unwind_handler_offset) : NULL;
   }
   oop*    oops_begin            () const          {
-    if (_code != nullptr) return (oop*)   (_code->header_begin() + _oops_offset)  ;
-    else                  return (oop*)   (       header_begin() + _oops_offset)  ; }
+    if (_code == nullptr) return (oop*)   (       header_begin() + _oops_offset)  ;
+    else                  return (oop*)   (_code->header_begin() + _oops_offset)  ; }
   oop*    oops_end              () const          {
-    if (_code != nullptr) return (oop*)   (_code->header_begin() + _metadata_offset);
-    else                  return (oop*)   (       header_begin() + _metadata_offset); }
+    if (_code == nullptr) return (oop*)   (       header_begin() + _oops_end_offset);
+    else                  return (oop*)   (_code->header_begin() + _oops_end_offset); }
 
   Metadata** metadata_begin   () const            { return (Metadata**)  (header_begin() + _metadata_offset)     ; }
   Metadata** metadata_end     () const            { return (Metadata**)  _scopes_data_begin; }

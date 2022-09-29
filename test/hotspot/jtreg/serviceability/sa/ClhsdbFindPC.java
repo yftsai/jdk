@@ -157,7 +157,7 @@ public class ClhsdbFindPC {
             expStrMap = new HashMap<>();
             if (withXcomp) {
                 expStrMap.put(cmdStr, List.of(
-                            "In data in NMethod for jdk/test/lib/apps/LingeredApp.steadyState",
+                            "In code in NMethod for jdk/test/lib/apps/LingeredApp.steadyState",
                             "content:",
                             "oops:",
                             "frame size:"));
