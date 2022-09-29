@@ -415,8 +415,12 @@ class nmethod : public CompiledMethod {
     if (_unwind_handler_offset != -1 && _code != nullptr) return                          _code->header_begin() + _unwind_handler_offset;
     else                                                  return _unwind_handler_offset != -1 ? (header_begin() + _unwind_handler_offset) : NULL;
   }
-  oop*    oops_begin            () const          { return (oop*)   (header_begin() + _oops_offset)         ; }
-  oop*    oops_end              () const          { return (oop*)   (header_begin() + _metadata_offset)     ; }
+  oop*    oops_begin            () const          {
+    if (_code != nullptr) return (oop*)   (_code->header_begin() + _oops_offset)  ;
+    else                  return (oop*)   (       header_begin() + _oops_offset)  ; }
+  oop*    oops_end              () const          {
+    if (_code != nullptr) return (oop*)   (_code->header_begin() + _metadata_offset);
+    else                  return (oop*)   (       header_begin() + _metadata_offset); }
 
   Metadata** metadata_begin   () const            { return (Metadata**)  (header_begin() + _metadata_offset)     ; }
   Metadata** metadata_end     () const            { return (Metadata**)  _scopes_data_begin; }

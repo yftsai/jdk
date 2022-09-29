@@ -663,6 +663,8 @@
   nonstatic_field(nmethod,                     _compile_id,                                   int)                                   \
   nonstatic_field(nmethod,                     _comp_level,                                   CompLevel)                             \
                                                                                                                                      \
+  nonstatic_field(nmethod_code,                _nmethod,                                      nmethod*)                              \
+                                                                                                                                     \
   unchecked_c2_static_field(Deoptimization,    _trap_reason_name,                             void*)                                 \
                                                                                                                                      \
   nonstatic_field(Deoptimization::UnrollBlock, _size_of_deoptimized_frame,                    int)                                   \
@@ -1371,6 +1373,7 @@
   declare_type(VtableBlob,               BufferBlob)                      \
   declare_type(CompiledMethod,           CodeBlob)                        \
   declare_type(nmethod,                  CompiledMethod)                  \
+  declare_type(nmethod_code,             CodeBlob)                        \
   declare_type(RuntimeStub,              RuntimeBlob)                     \
   declare_type(SingletonBlob,            RuntimeBlob)                     \
   declare_type(SafepointBlob,            SingletonBlob)                   \

@@ -79,7 +79,7 @@ public class GetNMethodTest extends CompilerWhiteBoxTest {
             switch (nmethod.comp_level) {
             case 1:
             case 4:
-                checkBlockType(nmethod, BlobType.MethodNonProfiled);
+                checkBlockType(nmethod, BlobType.Data);
                 break;
             case 2:
             case 3:

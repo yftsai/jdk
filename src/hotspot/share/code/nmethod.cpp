@@ -723,7 +723,8 @@ void* nmethod_code::operator new(size_t size, int nmethod_size, int comp_level) 
 }
 
 void* nmethod::operator new(size_t size, int nmethod_size, int comp_level) throw () {
-  return CodeCache::allocate(nmethod_size, CodeBlobType::Data);
+  CodeBlobType type = (CodeCache::heaps()->length() == 4) ? CodeBlobType::Data : CodeCache::get_code_blob_type(comp_level);
+  return CodeCache::allocate(nmethod_size, type);
 }
 
 nmethod::nmethod(
@@ -1114,7 +1115,7 @@ void nmethod::finalize_relocations() {
 
   // Make sure that post call nops fill in nmethod offsets eagerly so
   // we don't have to race with deoptimization
-  RelocIterator iter((nmethod*)this);
+  RelocIterator iter(this);
   while (iter.next()) {
     if (iter.type() == relocInfo::post_call_nop_type) {
       post_call_nop_Relocation* const reloc = iter.post_call_nop_reloc();
@@ -2300,7 +2301,7 @@ void nmethod::verify_scopes() {
   if (method()->is_native()) return; // Ignore stub methods.
   // iterate through all interrupt point
   // and verify the debug information is valid.
-  RelocIterator iter(this);
+  RelocIterator iter((nmethod*)this);
   while (iter.next()) {
     address stub = NULL;
     switch (iter.type()) {

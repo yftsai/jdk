@@ -64,6 +64,7 @@ public class VFrame {
       }
 
       if (cb != null) {
+        cb = cb.isNMethodCode() ? cb.asNMethodCodeOrNull().getNMethod() : cb;
         if (cb.isNMethod()) {
           NMethod nm = (NMethod) cb;
           // Compiled method (native stub or Java code)
