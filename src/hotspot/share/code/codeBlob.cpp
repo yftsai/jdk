@@ -136,7 +136,6 @@ CodeBlob::CodeBlob(const char* name, CompilerType type, const CodeBlobLayout& la
 {
   assert(is_aligned(_size,        oopSize), "unaligned size");
   assert(is_aligned(_header_size, oopSize), "unaligned size");
-  assert(_data_offset <= _size, "codeBlob is too small");
   assert(layout.code_end() == layout.content_end(), "must be the same - see code_end()");
 
   set_oop_maps(oop_maps);

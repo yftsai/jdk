@@ -522,9 +522,8 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
 #if INCLUDE_JVMCI
   int jvmci_data_size = !compiler->is_jvmci() ? 0 : JVMCINMethodData::compute_size(nmethod_mirror_name);
 #endif
-  int nmethod_size =
-    CodeBlob::allocation_size(code_buffer, sizeof(nmethod))
-    + adjust_pcs_size(debug_info->pcs_size())
+  int nmethod_data_size =
+    adjust_pcs_size(debug_info->pcs_size())
     + align_up((int)dependencies->size_in_bytes(), oopSize)
     + align_up(handler_table->size_in_bytes()    , oopSize)
     + align_up(nul_chk_table->size_in_bytes()    , oopSize)
@@ -533,15 +532,24 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
     + align_up(jvmci_data_size                   , oopSize)
 #endif
     + align_up(debug_info->data_size()           , oopSize);
+  int nmethod_size =
+    CodeBlob::allocation_size(code_buffer, sizeof(nmethod))
+    + nmethod_data_size;
 
   assert(sizeof(nmethod_code) <= sizeof(nmethod), "use space of nmethod as nmethod_code for now");
   int code_size = CodeBlob::code_allocation_size(code_buffer, sizeof(nmethod_code));
+  int compact_nmethod_size =
+    align_code_offset(sizeof(nmethod))
+    + align_up(code_buffer->total_metadata_size(), oopSize)
+    + nmethod_data_size;
+  assert(compact_nmethod_size <= nmethod_size, "sanity check");
   {
     MutexLocker mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
 
     nmethod_code *cb = new (code_size, comp_level) nmethod_code(code_size, frame_size, code_buffer);
-    nm = new (nmethod_size, comp_level)
-    nmethod(method(), compiler->type(), nmethod_size, compile_id, entry_bci, offsets,
+    int size = !cb ? nmethod_size : compact_nmethod_size;
+    nm = new (size, comp_level)
+    nmethod(method(), compiler->type(), size, compile_id, entry_bci, offsets,
             orig_pc_offset, debug_info, dependencies, code_buffer, frame_size,
             oop_maps,
             handler_table,
@@ -826,7 +834,8 @@ nmethod::nmethod(
 
     _oops_offset             = (_code == nullptr) ? data_offset() : _code->data_offset();
     _oops_end_offset         = _oops_offset          + align_up(code_buffer->total_oop_size(), oopSize);
-    _metadata_offset         = data_offset()         + align_up(code_buffer->total_oop_size(), oopSize);
+    if (_code == nullptr) _metadata_offset         = _oops_end_offset;
+    else                  _metadata_offset         = align_code_offset(sizeof(nmethod));
     int scopes_data_offset   = _metadata_offset      + align_up(code_buffer->total_metadata_size(), wordSize);
 
     _scopes_pcs_offset       = scopes_data_offset    + align_up(debug_info->data_size       (), oopSize);
