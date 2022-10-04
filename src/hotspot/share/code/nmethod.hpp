@@ -64,6 +64,28 @@ class FailedSpeculation;
 class JVMCINMethodData;
 #endif
 
+class nmethod_code : public CodeBlob {
+ public:
+  nmethod_code(int nmethod_code_size, int frame_size, CodeBuffer *cb):
+    CodeBlob("nmethod_code", compiler_none,
+             CodeBlobLayout((address) this, nmethod_code_size, sizeof(nmethod_code), cb, (address) this, sizeof(nmethod_code)),
+             nullptr,
+             CodeOffsets::frame_never_safe, frame_size, nullptr, false),
+    _nmethod(nullptr)
+  { }
+
+  virtual bool is_nmethod_code() const                { return true; }
+
+  int data_offset() const                     { return _data_offset; }
+
+  nmethod *_nmethod;
+
+  void preserve_callee_argument_oops(frame fr, const RegisterMap* reg_map, OopClosure* f) { ShouldNotReachHere(); }
+  void verify() {}
+
+  void* operator new(size_t, int nmethod_code_size, int comp_level) throw();
+};
+
 class nmethod : public CompiledMethod {
   friend class VMStructs;
   friend class JVMCIVMStructs;
@@ -209,8 +231,8 @@ class nmethod : public CompiledMethod {
   int _consts_offset;
   int _stub_offset;
   int _oops_offset;                       // offset to where embedded oop table begins (inside data)
+  int _oops_end_offset;
   int _metadata_offset;                   // embedded meta data table
-  int _scopes_data_offset;
   int _scopes_pcs_offset;
   int _dependencies_offset;
   int _handler_table_offset;
@@ -221,7 +243,9 @@ class nmethod : public CompiledMethod {
 #endif
   int _nmethod_end_offset;
 
-  int code_offset() const { return (address) code_begin() - header_begin(); }
+  int code_offset() const {
+    if (_code == nullptr) return (address) code_begin() -        header_begin();
+    else                  return (address) code_begin() - _code->header_begin(); }
 
   // location in frame (offset for sp) that deopt can store the original
   // pc during a deopt.
@@ -260,6 +284,8 @@ class nmethod : public CompiledMethod {
   // Protected by CompiledMethod_lock
   volatile signed char _state;         // {not_installed, in_use, not_used, not_entrant}
 
+  nmethod_code *_code;
+
   // For native wrappers
   nmethod(Method* method,
           CompilerType type,
@@ -294,6 +320,7 @@ class nmethod : public CompiledMethod {
           int speculations_len,
           int jvmci_data_size
 #endif
+          , nmethod_code *code
           );
 
   // helper methods
@@ -315,7 +342,10 @@ class nmethod : public CompiledMethod {
   void init_defaults();
 
   // Offsets
-  int content_offset() const                  { return content_begin() - header_begin(); }
+  int content_offset() const                  {
+    if (_code == nullptr) return content_begin() -        header_begin();
+    else                  return content_begin() - _code->header_begin();
+  }
   int data_offset() const                     { return _data_offset; }
 
   address header_end() const                  { return (address)    header_begin() + header_size(); }
@@ -369,14 +399,31 @@ class nmethod : public CompiledMethod {
   bool is_osr_method() const                      { return _entry_bci != InvocationEntryBci; }
 
   // boundaries for different parts
-  address consts_begin          () const          { return           header_begin() + _consts_offset        ; }
+  address consts_begin          () const          {
+    if (_code == nullptr) return        header_begin() + _consts_offset;
+    else                  return _code->header_begin() + _consts_offset; }
   address consts_end            () const          { return           code_begin()                           ; }
-  address stub_begin            () const          { return           header_begin() + _stub_offset          ; }
-  address stub_end              () const          { return           header_begin() + _oops_offset          ; }
-  address exception_begin       () const          { return           header_begin() + _exception_offset     ; }
-  address unwind_handler_begin  () const          { return _unwind_handler_offset != -1 ? (header_begin() + _unwind_handler_offset) : NULL; }
-  oop*    oops_begin            () const          { return (oop*)   (header_begin() + _oops_offset)         ; }
-  oop*    oops_end              () const          { return (oop*)   (header_begin() + _metadata_offset)     ; }
+  address stub_begin            () const          {
+    if (_code == nullptr) return        header_begin() + _stub_offset;
+    else                  return _code->header_begin() + _stub_offset;
+  }
+  address stub_end              () const          {
+    if (_code == nullptr) return        header_begin() + _oops_offset;
+    else                  return _code->header_begin() + _oops_offset;
+  }
+  address exception_begin       () const          {
+    if (_code == nullptr) return           header_begin() + _exception_offset     ;
+    else                  return    _code->header_begin() + _exception_offset     ; }
+  address unwind_handler_begin  () const          {
+    if (_code == nullptr) return _unwind_handler_offset != -1 ? (       header_begin() + _unwind_handler_offset) : NULL;
+    else                  return _unwind_handler_offset != -1 ? (_code->header_begin() + _unwind_handler_offset) : NULL;
+  }
+  oop*    oops_begin            () const          {
+    if (_code == nullptr) return (oop*)   (       header_begin() + _oops_offset)  ;
+    else                  return (oop*)   (_code->header_begin() + _oops_offset)  ; }
+  oop*    oops_end              () const          {
+    if (_code == nullptr) return (oop*)   (       header_begin() + _oops_end_offset);
+    else                  return (oop*)   (_code->header_begin() + _oops_end_offset); }
 
   Metadata** metadata_begin   () const            { return (Metadata**)  (header_begin() + _metadata_offset)     ; }
   Metadata** metadata_end     () const            { return (Metadata**)  _scopes_data_begin; }

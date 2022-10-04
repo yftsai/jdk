@@ -112,7 +112,7 @@ class CodeCache : AllStatic {
   // CodeHeap management
   static void initialize_heaps();                             // Initializes the CodeHeaps
   // Check the code heap sizes set by the user via command line
-  static void check_heap_sizes(size_t non_nmethod_size, size_t profiled_size, size_t non_profiled_size, size_t cache_size, bool all_set);
+  static void check_heap_sizes(size_t non_nmethod_size, size_t profiled_size, size_t non_profiled_size, size_t data_size, size_t cache_size, bool all_set);
   // Creates a new heap with the given name and size, containing CodeBlobs of the given type
   static void add_heap(ReservedSpace rs, const char* name, CodeBlobType code_blob_type);
   static CodeHeap* get_code_heap_containing(void* p);         // Returns the CodeHeap containing the given pointer, or NULL
@@ -260,12 +260,12 @@ class CodeCache : AllStatic {
   }
 
   static bool code_blob_type_accepts_compiled(CodeBlobType code_blob_type) {
-    bool result = code_blob_type == CodeBlobType::All || code_blob_type <= CodeBlobType::MethodProfiled;
+    bool result = code_blob_type == CodeBlobType::All || code_blob_type <= CodeBlobType::MethodProfiled || code_blob_type == CodeBlobType::Data;
     return result;
   }
 
   static bool code_blob_type_accepts_nmethod(CodeBlobType type) {
-    return type == CodeBlobType::All || type <= CodeBlobType::MethodProfiled;
+    return type == CodeBlobType::All || type <= CodeBlobType::MethodProfiled || type == CodeBlobType::Data;
   }
 
   static bool code_blob_type_accepts_allocable(CodeBlobType type) {

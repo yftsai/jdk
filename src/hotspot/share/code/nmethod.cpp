@@ -522,9 +522,8 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
 #if INCLUDE_JVMCI
   int jvmci_data_size = !compiler->is_jvmci() ? 0 : JVMCINMethodData::compute_size(nmethod_mirror_name);
 #endif
-  int nmethod_size =
-    CodeBlob::allocation_size(code_buffer, sizeof(nmethod))
-    + adjust_pcs_size(debug_info->pcs_size())
+  int nmethod_data_size =
+    adjust_pcs_size(debug_info->pcs_size())
     + align_up((int)dependencies->size_in_bytes(), oopSize)
     + align_up(handler_table->size_in_bytes()    , oopSize)
     + align_up(nul_chk_table->size_in_bytes()    , oopSize)
@@ -533,11 +532,24 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
     + align_up(jvmci_data_size                   , oopSize)
 #endif
     + align_up(debug_info->data_size()           , oopSize);
+  int nmethod_size =
+    CodeBlob::allocation_size(code_buffer, sizeof(nmethod))
+    + nmethod_data_size;
+
+  assert(sizeof(nmethod_code) <= sizeof(nmethod), "use space of nmethod as nmethod_code for now");
+  int code_size = CodeBlob::code_allocation_size(code_buffer, sizeof(nmethod_code));
+  int compact_nmethod_size =
+    align_code_offset(sizeof(nmethod))
+    + align_up(code_buffer->total_metadata_size(), oopSize)
+    + nmethod_data_size;
+  assert(compact_nmethod_size <= nmethod_size, "sanity check");
   {
     MutexLocker mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
 
-    nm = new (nmethod_size, comp_level)
-    nmethod(method(), compiler->type(), nmethod_size, compile_id, entry_bci, offsets,
+    nmethod_code *cb = new (code_size, comp_level) nmethod_code(code_size, frame_size, code_buffer);
+    int size = !cb ? nmethod_size : compact_nmethod_size;
+    nm = new (size, comp_level)
+    nmethod(method(), compiler->type(), size, compile_id, entry_bci, offsets,
             orig_pc_offset, debug_info, dependencies, code_buffer, frame_size,
             oop_maps,
             handler_table,
@@ -549,6 +561,7 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
             speculations_len,
             jvmci_data_size
 #endif
+            , cb
             );
 
     if (nm != NULL) {
@@ -604,11 +617,12 @@ nmethod::nmethod(
   ByteSize basic_lock_owner_sp_offset,
   ByteSize basic_lock_sp_offset,
   OopMapSet* oop_maps )
-  : CompiledMethod(method, "native nmethod", type, nmethod_size, sizeof(nmethod), code_buffer, offsets->value(CodeOffsets::Frame_Complete), frame_size, oop_maps, false, true),
+  : CompiledMethod(method, "native nmethod", type, nmethod_size, sizeof(nmethod), code_buffer, offsets->value(CodeOffsets::Frame_Complete), frame_size, oop_maps, false, true, nullptr, sizeof(nmethod)),
   _unlinked_next(NULL),
   _native_receiver_sp_offset(basic_lock_owner_sp_offset),
   _native_basic_lock_sp_offset(basic_lock_sp_offset),
-  _is_unloading_state(0)
+  _is_unloading_state(0),
+  _code(nullptr)
 {
   {
     int scopes_data_offset   = 0;
@@ -630,7 +644,8 @@ nmethod::nmethod(
     _consts_offset           = data_offset();
     _stub_offset             = content_offset()      + code_buffer->total_offset_of(code_buffer->stubs());
     _oops_offset             = data_offset();
-    _metadata_offset         = _oops_offset          + align_up(code_buffer->total_oop_size(), oopSize);
+    _oops_end_offset         = _oops_offset          + align_up(code_buffer->total_oop_size(), oopSize);
+    _metadata_offset         = _oops_end_offset;
     scopes_data_offset       = _metadata_offset      + align_up(code_buffer->total_metadata_size(), wordSize);
     _scopes_pcs_offset       = scopes_data_offset;
     _dependencies_offset     = _scopes_pcs_offset;
@@ -712,8 +727,13 @@ nmethod::nmethod(
   }
 }
 
+void* nmethod_code::operator new(size_t, int nmethod_code_size, int comp_level) throw () {
+  return CodeCache::allocate(nmethod_code_size, CodeCache::get_code_blob_type(comp_level));
+}
+
 void* nmethod::operator new(size_t size, int nmethod_size, int comp_level) throw () {
-  return CodeCache::allocate(nmethod_size, CodeCache::get_code_blob_type(comp_level));
+  CodeBlobType type = (CodeCache::heaps()->length() == 4) ? CodeBlobType::Data : CodeCache::get_code_blob_type(comp_level);
+  return CodeCache::allocate(nmethod_size, type);
 }
 
 nmethod::nmethod(
@@ -738,13 +758,16 @@ nmethod::nmethod(
   int speculations_len,
   int jvmci_data_size
 #endif
+  , nmethod_code *code
   )
-  : CompiledMethod(method, "nmethod", type, nmethod_size, sizeof(nmethod), code_buffer, offsets->value(CodeOffsets::Frame_Complete), frame_size, oop_maps, false, true),
+  : CompiledMethod(method, "nmethod", type, nmethod_size, sizeof(nmethod), code_buffer, offsets->value(CodeOffsets::Frame_Complete), frame_size, oop_maps, false, true, code, sizeof(nmethod_code)),
   _unlinked_next(NULL),
   _native_receiver_sp_offset(in_ByteSize(-1)),
   _native_basic_lock_sp_offset(in_ByteSize(-1)),
-  _is_unloading_state(0)
+  _is_unloading_state(0),
+  _code(code)
 {
+  if (_code != nullptr) _code->_nmethod = this;
   assert(debug_info->oop_recorder() == code_buffer->oop_recorder(), "shared OR");
   {
     debug_only(NoSafepointVerifier nsv;)
@@ -763,7 +786,8 @@ nmethod::nmethod(
     // Section offsets
     _consts_offset           = content_offset()      + code_buffer->total_offset_of(code_buffer->consts());
     _stub_offset             = content_offset()      + code_buffer->total_offset_of(code_buffer->stubs());
-    set_ctable_begin(header_begin() + _consts_offset);
+    if (_code == nullptr) set_ctable_begin(       header_begin() + _consts_offset);
+    else                  set_ctable_begin(_code->header_begin() + _consts_offset);
 
 #if INCLUDE_JVMCI
     if (compiler->is_jvmci()) {
@@ -774,12 +798,14 @@ nmethod::nmethod(
         _exception_offset = -1;
       }
       if (offsets->value(CodeOffsets::Deopt) != -1) {
-        _deopt_handler_begin       = (address) this + code_offset()          + offsets->value(CodeOffsets::Deopt);
+        if (_code == nullptr) _deopt_handler_begin       = (address) this  + code_offset()         + offsets->value(CodeOffsets::Deopt);
+        else                  _deopt_handler_begin       = (address) _code + code_offset()         + offsets->value(CodeOffsets::Deopt);
       } else {
         _deopt_handler_begin = NULL;
       }
       if (offsets->value(CodeOffsets::DeoptMH) != -1) {
-        _deopt_mh_handler_begin  = (address) this + code_offset()          + offsets->value(CodeOffsets::DeoptMH);
+        if (_code == nullptr) _deopt_mh_handler_begin  = (address) this  + code_offset()         + offsets->value(CodeOffsets::DeoptMH);
+        else                  _deopt_mh_handler_begin  = (address) _code + code_offset()         + offsets->value(CodeOffsets::DeoptMH);
       } else {
         _deopt_mh_handler_begin = NULL;
       }
@@ -791,9 +817,11 @@ nmethod::nmethod(
       assert(offsets->value(CodeOffsets::Deopt     ) != -1, "must be set");
 
       _exception_offset       = _stub_offset          + offsets->value(CodeOffsets::Exceptions);
-      _deopt_handler_begin    = (address) this + _stub_offset          + offsets->value(CodeOffsets::Deopt);
+      if (_code == nullptr) _deopt_handler_begin    = (address) this  + _stub_offset         + offsets->value(CodeOffsets::Deopt);
+      else                  _deopt_handler_begin    = (address) _code + _stub_offset         + offsets->value(CodeOffsets::Deopt);
       if (offsets->value(CodeOffsets::DeoptMH) != -1) {
-        _deopt_mh_handler_begin  = (address) this + _stub_offset          + offsets->value(CodeOffsets::DeoptMH);
+        if (_code == nullptr) _deopt_mh_handler_begin  = (address) this  + _stub_offset         + offsets->value(CodeOffsets::DeoptMH);
+        else                  _deopt_mh_handler_begin  = (address) _code + _stub_offset         + offsets->value(CodeOffsets::DeoptMH);
       } else {
         _deopt_mh_handler_begin  = NULL;
       }
@@ -804,8 +832,10 @@ nmethod::nmethod(
       _unwind_handler_offset = -1;
     }
 
-    _oops_offset             = data_offset();
-    _metadata_offset         = _oops_offset          + align_up(code_buffer->total_oop_size(), oopSize);
+    _oops_offset             = (_code == nullptr) ? data_offset() : _code->data_offset();
+    _oops_end_offset         = _oops_offset          + align_up(code_buffer->total_oop_size(), oopSize);
+    if (_code == nullptr) _metadata_offset         = _oops_end_offset;
+    else                  _metadata_offset         = align_code_offset(sizeof(nmethod));
     int scopes_data_offset   = _metadata_offset      + align_up(code_buffer->total_metadata_size(), wordSize);
 
     _scopes_pcs_offset       = scopes_data_offset    + align_up(debug_info->data_size       (), oopSize);
@@ -1404,6 +1434,10 @@ void nmethod::flush() {
 
   Universe::heap()->unregister_nmethod(this);
   CodeCache::unregister_old_nmethod(this);
+
+  if (_code != nullptr) {
+    CodeCache::free(_code);
+  }
 
   CodeBlob::flush();
   CodeCache::free(this);

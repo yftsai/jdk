@@ -45,8 +45,9 @@ enum class CodeBlobType {
   MethodNonProfiled   = 0,    // Execution level 1 and 4 (non-profiled) nmethods (including native nmethods)
   MethodProfiled      = 1,    // Execution level 2 and 3 (profiled) nmethods
   NonNMethod          = 2,    // Non-nmethods like Buffers, Adapters and Runtime Stubs
-  All                 = 3,    // All types (No code cache segmentation)
-  NumTypes            = 4     // Number of CodeBlobTypes
+  Data                = 3,
+  All                 = 4,    // All types (No code cache segmentation)
+  NumTypes            = 5     // Number of CodeBlobTypes
 };
 
 // CodeBlob - superclass for all entries in the CodeCache.
@@ -80,6 +81,7 @@ class CodeBlobLayout;
 class UpcallStub; // for as_upcall_stub()
 class RuntimeStub; // for as_runtime_stub()
 class JavaFrameAnchor; // for UpcallStub::jfa_for_frame
+class nmethod_code;
 
 class CodeBlob {
   friend class VMStructs;
@@ -138,6 +140,7 @@ public:
 
   // Returns the space needed for CodeBlob
   static unsigned int allocation_size(CodeBuffer* cb, int header_size);
+  static unsigned int code_allocation_size(CodeBuffer* cb, int header_size);
   static unsigned int align_code_offset(int offset);
 
   // Deletion
@@ -146,6 +149,7 @@ public:
   // Typing
   virtual bool is_buffer_blob() const                 { return false; }
   virtual bool is_nmethod() const                     { return false; }
+  virtual bool is_nmethod_code() const                { return false; }
   virtual bool is_runtime_stub() const                { return false; }
   virtual bool is_deoptimization_stub() const         { return false; }
   virtual bool is_uncommon_trap_stub() const          { return false; }
@@ -167,6 +171,7 @@ public:
   // Casting
   nmethod* as_nmethod_or_null()                { return is_nmethod() ? (nmethod*) this : NULL; }
   nmethod* as_nmethod()                        { assert(is_nmethod(), "must be nmethod"); return (nmethod*) this; }
+  nmethod_code* as_nmethod_code()              { assert(is_nmethod_code(), "must be nmethod_code"); return (nmethod_code*) this; }
   CompiledMethod* as_compiled_method_or_null() { return is_compiled() ? (CompiledMethod*) this : NULL; }
   CompiledMethod* as_compiled_method()         { assert(is_compiled(), "must be compiled"); return (CompiledMethod*) this; }
   CodeBlob* as_codeblob_or_null() const        { return (CodeBlob*) this; }
@@ -264,8 +269,11 @@ private:
   int _header_size;
   int _relocation_size;
   int _content_offset;
-  int _code_offset;
   int _data_offset;
+  int _code_header_size;
+  int _code_content_offset;
+  int _code_offset;
+  int _code_data_offset;
   address _code_begin;
   address _code_end;
   address _content_begin;
@@ -280,8 +288,11 @@ public:
     _header_size(0),
     _relocation_size(0),
     _content_offset(0),
-    _code_offset(0),
     _data_offset(0),
+    _code_header_size(0),
+    _code_content_offset(0),
+    _code_offset(0),
+    _code_data_offset(0),
     _code_begin(code_begin),
     _code_end(code_end),
     _content_begin(content_begin),
@@ -297,8 +308,11 @@ public:
     _header_size(header_size),
     _relocation_size(relocation_size),
     _content_offset(CodeBlob::align_code_offset(_header_size + _relocation_size)),
+    _data_offset(data_offset),
+    _code_header_size(header_size),
+    _code_content_offset(_content_offset),
     _code_offset(_content_offset),
-    _data_offset(data_offset)
+    _code_data_offset(_data_offset)
   {
     assert(is_aligned(_relocation_size, oopSize), "unaligned size");
 
@@ -309,28 +323,32 @@ public:
     _content_end = (address) start + _data_offset;
 
     _data_end = (address) start + _size;
-    _relocation_begin = (address) start + _header_size;
+    _relocation_begin = (address) start + _code_header_size;
     _relocation_end = _relocation_begin + _relocation_size;
   }
 
-  CodeBlobLayout(const address start, int size, int header_size, const CodeBuffer* cb) :
+  CodeBlobLayout(const address start, int size, int header_size, const CodeBuffer* cb, address code_start, int code_header_size) :
     _size(size),
     _header_size(header_size),
     _relocation_size(align_up(cb->total_relocation_size(), oopSize)),
     _content_offset(CodeBlob::align_code_offset(_header_size + _relocation_size)),
-    _code_offset(_content_offset + cb->total_offset_of(cb->insts())),
-    _data_offset(_content_offset + align_up(cb->total_content_size(), oopSize))
+    _data_offset(_content_offset + align_up(cb->total_content_size(), oopSize)),
+    _code_header_size(code_header_size),
+    _code_content_offset(CodeBlob::align_code_offset(code_header_size + _relocation_size)),
+    _code_offset(_code_content_offset + cb->total_offset_of(cb->insts())),
+    _code_data_offset(_code_content_offset + align_up(cb->total_content_size(), oopSize))
   {
     assert(is_aligned(_relocation_size, oopSize), "unaligned size");
 
-    _code_begin = (address) start + _code_offset;
-    _code_end = (address) start + _data_offset;
+    address s = code_start;
+    _code_begin = (address) s + _code_offset;
+    _code_end = (address) s + _code_data_offset;
 
-    _content_begin = (address) start + _content_offset;
-    _content_end = (address) start + _data_offset;
+    _content_begin = (address) s + _code_content_offset;
+    _content_end = (address) s + _code_data_offset;
 
     _data_end = (address) start + _size;
-    _relocation_begin = (address) start + _header_size;
+    _relocation_begin = (address) s + _code_header_size;
     _relocation_end = _relocation_begin + _relocation_size;
   }
 

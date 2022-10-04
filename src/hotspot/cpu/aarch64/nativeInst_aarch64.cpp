@@ -222,8 +222,11 @@ address NativeCall::get_trampoline() {
       is_NativeCallTrampolineStub_at(bl_destination))
     return bl_destination;
 
-  if (code->is_nmethod()) {
-    return trampoline_stub_Relocation::get_trampoline_for(call_addr, (nmethod*)code);
+  if (!code->is_nmethod_code() && code->is_nmethod()) {
+    return trampoline_stub_Relocation::get_trampoline_for(call_addr, code->as_nmethod());
+  }
+  else if (code->is_nmethod_code()) {
+    return trampoline_stub_Relocation::get_trampoline_for(call_addr, code->as_nmethod_code()->_nmethod);
   }
 
   return NULL;

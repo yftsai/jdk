@@ -433,7 +433,7 @@ void frame::adjust_unextended_sp() {
   // returning to any of these call sites.
 
   if (_cb != NULL) {
-    CompiledMethod* sender_cm = _cb->as_compiled_method_or_null();
+    CompiledMethod* sender_cm = !_cb->is_nmethod_code() ? _cb->as_compiled_method_or_null() : _cb->as_nmethod_code()->_nmethod->as_compiled_method();
     if (sender_cm != NULL) {
       // If the sender PC is a deoptimization point, get the original PC.
       if (sender_cm->is_deopt_entry(_pc) ||

@@ -1369,8 +1369,8 @@ methodHandle SharedRuntime::resolve_sub_helper(bool is_virtual, bool is_optimize
   frame caller_frame = current->last_frame().sender(&cbl_map);
 
   CodeBlob* caller_cb = caller_frame.cb();
-  guarantee(caller_cb != NULL && caller_cb->is_compiled(), "must be called from compiled method");
-  CompiledMethod* caller_nm = caller_cb->as_compiled_method_or_null();
+  guarantee(caller_cb != NULL && (caller_cb->is_compiled() || caller_cb->is_nmethod_code()), "must be called from compiled method");
+  CompiledMethod* caller_nm = caller_cb->is_compiled() ? caller_cb->as_compiled_method_or_null() : (CompiledMethod*)caller_cb->as_nmethod_code()->_nmethod;
 
   // determine call info & receiver
   // note: a) receiver is NULL for static calls

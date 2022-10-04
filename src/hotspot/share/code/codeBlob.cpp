@@ -78,6 +78,16 @@ unsigned int CodeBlob::allocation_size(CodeBuffer* cb, int header_size) {
   return size;
 }
 
+unsigned int CodeBlob::code_allocation_size(CodeBuffer* cb, int header_size) {
+  unsigned int size = header_size;
+  size += align_up(cb->total_relocation_size(), oopSize);
+  // align the size to CodeEntryAlignment
+  size = align_code_offset(size);
+  size += align_up(cb->total_content_size(), oopSize);
+  size += align_up(cb->total_oop_size(), oopSize);
+  return size;
+}
+
 CodeBlob::CodeBlob(const char* name, CompilerType type, const CodeBlobLayout& layout, int frame_complete_offset, int frame_size, ImmutableOopMapSet* oop_maps, bool caller_must_gc_arguments, bool compiled) :
   _code_begin(layout.code_begin()),
   _code_end(layout.code_end()),
@@ -126,7 +136,6 @@ CodeBlob::CodeBlob(const char* name, CompilerType type, const CodeBlobLayout& la
 {
   assert(is_aligned(_size,        oopSize), "unaligned size");
   assert(is_aligned(_header_size, oopSize), "unaligned size");
-  assert(_data_offset <= _size, "codeBlob is too small");
   assert(layout.code_end() == layout.content_end(), "must be the same - see code_end()");
 
   set_oop_maps(oop_maps);
@@ -157,7 +166,7 @@ RuntimeBlob::RuntimeBlob(
   int         frame_size,
   OopMapSet*  oop_maps,
   bool        caller_must_gc_arguments
-) : CodeBlob(name, compiler_none, CodeBlobLayout((address) this, size, header_size, cb), cb, frame_complete, frame_size, oop_maps, caller_must_gc_arguments) {
+) : CodeBlob(name, compiler_none, CodeBlobLayout((address) this, size, header_size, cb, (address) this, header_size), cb, frame_complete, frame_size, oop_maps, caller_must_gc_arguments) {
   cb->copy_code_and_locs_to(this);
 }
 

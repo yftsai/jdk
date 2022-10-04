@@ -110,6 +110,7 @@ public class AARCH64Frame extends Frame {
     if ( pc != null) {
       // Look for a deopt pc and if it is deopted convert to original pc
       CodeBlob cb = VM.getVM().getCodeCache().findBlob(pc);
+      cb = (cb != null && cb.isNMethodCode()) ? cb.asNMethodCodeOrNull().getNMethod() : cb;
       if (cb != null && cb.isJavaMethod()) {
         NMethod nm = (NMethod) cb;
         if (pc.equals(nm.deoptHandlerBegin())) {
@@ -336,7 +337,12 @@ public class AARCH64Frame extends Frame {
     // is as follows:
 
     CodeBlob cb = cb();
-    NMethod senderNm = (cb == null) ? null : cb.asNMethodOrNull();
+    NMethod senderNm = null;
+    if (cb != null && cb.isNMethod())
+      senderNm = cb.asNMethodOrNull();
+    else if (cb != null && cb.isNMethodCode())
+      senderNm = cb.asNMethodCodeOrNull().getNMethod();
+
     if (senderNm != null) {
       // If the sender PC is a deoptimization point, get the original
       // PC.  For MethodHandle call site the unextended_sp is stored in

@@ -61,6 +61,7 @@ public class CodeCache {
     // Add mappings for all possible CodeBlob subclasses
     virtualConstructor.addMapping("BufferBlob", BufferBlob.class);
     virtualConstructor.addMapping("nmethod", NMethod.class);
+    virtualConstructor.addMapping("nmethod_code", NMethodCode.class);
     virtualConstructor.addMapping("RuntimeStub", RuntimeStub.class);
     virtualConstructor.addMapping("AdapterBlob", AdapterBlob.class);
     virtualConstructor.addMapping("MethodHandlesAdapterBlob", MethodHandlesAdapterBlob.class);

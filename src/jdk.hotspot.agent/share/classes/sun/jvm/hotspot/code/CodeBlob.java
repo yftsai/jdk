@@ -137,6 +137,8 @@ public class CodeBlob extends VMObject {
 
   public boolean isNMethod()            { return false; }
 
+  public boolean isNMethodCode()        { return false; }
+
   public boolean isRuntimeStub()        { return false; }
 
   public boolean isDeoptimizationStub() { return false; }
@@ -159,6 +161,11 @@ public class CodeBlob extends VMObject {
 
   public NMethod asNMethodOrNull() {
     if (isNMethod()) return (NMethod)this;
+    return null;
+  }
+
+  public NMethodCode asNMethodCodeOrNull() {
+    if (isNMethodCode()) return (NMethodCode)this;
     return null;
   }
 
