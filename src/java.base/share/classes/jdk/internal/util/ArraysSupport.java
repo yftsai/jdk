@@ -214,19 +214,13 @@ public class ArraysSupport {
     private static int signedHashCode(int result, byte[] a, int fromIndex, int length) {
         int end = fromIndex + length;
         int i = fromIndex;
-        for (; i < end - 7; i += 8) {
-            int r1 = (-1807454463) * result            + 1742810335 * (a[i]     & 0xff);
-            r1    +=     887503681 * (a[i + 1] & 0xff) +   28629151 * (a[i + 2] & 0xff);
-            int r2 =        923521 * (a[i + 3] & 0xff) +      29791 * (a[i + 4] & 0xff);
-            r2    +=           961 * (a[i + 5] & 0xff) +         31 * (a[i + 6] & 0xff);
-            result = r1 + r2 + (a[i + 7] & 0xff);
+        for (; i < end - 3; i += 4) {
+            result =          (a[i + 3] & 0xff)
+                   +     31 * (a[i + 2] & 0xff)
+                   +   (961 * (a[i + 1] & 0xff) + 29791 * (a[i] & 0xff))
+                   + 923521 * result;
         }
-        for (; i < end - 1; i += 2) {
-            result = 961 * result
-                    + 31 * (a[i]   & 0xff)
-                    +      (a[i+1] & 0xff);
-        }
-        if (i < end) {
+        for (; i < end; i++) {
             result = 31 * result + (a[i] & 0xff);
         }
         return result;
@@ -271,19 +265,13 @@ public class ArraysSupport {
     public static int utf16hashCode(int result, byte[] value, int fromIndex, int length) {
         int end = fromIndex + length;
         int i = fromIndex;
-        for (; i < end - 7; i += 8) {
-            int r1 = (-1807454463) * result                         + 1742810335 * JLA.getUTF16Char(value, i);
-            r1    +=     887503681 * JLA.getUTF16Char(value, i + 1) +   28629151 * JLA.getUTF16Char(value, i + 2);
-            int r2 =        923521 * JLA.getUTF16Char(value, i + 3) +      29791 * JLA.getUTF16Char(value, i + 4);
-            r2    +=           961 * JLA.getUTF16Char(value, i + 5) +         31 * JLA.getUTF16Char(value, i + 6);
-            result = r1 + r2 + JLA.getUTF16Char(value, i + 7);
+        for (; i < end - 3; i += 4) {
+            result =          JLA.getUTF16Char(value, i + 3)
+                   +     31 * JLA.getUTF16Char(value, i + 2)
+                   +   (961 * JLA.getUTF16Char(value, i + 1) +  29791 * JLA.getUTF16Char(value, i))
+                   + 923521 * result;
         }
-        for (; i < end - 1; i += 2) {
-            result = 961 * result
-                    + 31 * JLA.getUTF16Char(value, i)
-                    +      JLA.getUTF16Char(value, i + 1);
-        }
-        if (i < end) {
+        for (; i < end; i++) {
             result = 31 * result + JLA.getUTF16Char(value, i);
         }
         return result;
