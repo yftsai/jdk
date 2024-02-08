@@ -97,6 +97,9 @@
 #if INCLUDE_JVMCI
 #include "jvmci/jvmci.hpp"
 #endif
+#if defined(LINUX)
+#include "perfJitDump.hpp"
+#endif
 
 GrowableArray<Method*>* collected_profiled_methods;
 
@@ -483,6 +486,9 @@ void before_exit(JavaThread* thread, bool halt) {
   // may be attached late and JVMTI must track phases of VM execution
   JvmtiExport::post_vm_death();
   JvmtiAgentList::unload_agents();
+#ifdef LINUX
+    PerfJitDumpAgent::close();
+#endif
 
   // Terminate the signal thread
   // Note: we don't wait until it actually dies.

@@ -114,6 +114,9 @@
 #if INCLUDE_JFR
 #include "jfr/jfr.hpp"
 #endif
+#if defined(LINUX)
+#include "perfJitDump.hpp"
+#endif
 
 // Initialization after module runtime initialization
 void universe_post_module_init();  // must happen after call_initPhase2
@@ -502,6 +505,13 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 
   // Launch -agentlib/-agentpath and converted -Xrun agents
   JvmtiAgentList::load_agents();
+
+  // start the dump like an agent
+  if (DumpPerfJitDump) {
+    JvmtiExport::enter_onload_phase();
+    PerfJitDumpAgent::create();
+    JvmtiExport::enter_primordial_phase();
+  }
 
   // Initialize Threads state
   _number_of_threads = 0;

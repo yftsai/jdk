@@ -73,6 +73,9 @@
   product(bool, DumpPerfMapAtExit, false, DIAGNOSTIC,                   \
           "Write map file for Linux perf tool at exit")                 \
                                                                         \
+  product(bool, DumpPerfJitDump, false, DIAGNOSTIC,                     \
+          "Write jit dump for Linux perf tool at exit")                 \
+                                                                        \
   product(intx, TimerSlack, -1, EXPERIMENTAL,                           \
           "Overrides the timer slack value to the given number of "     \
           "nanoseconds. Lower value provides more accurate "            \
