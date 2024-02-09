@@ -506,12 +506,13 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   // Launch -agentlib/-agentpath and converted -Xrun agents
   JvmtiAgentList::load_agents();
 
-  // start the dump like an agent
+#if defined(LINUX)
   if (DumpPerfJitDump) {
     JvmtiExport::enter_onload_phase();
     PerfJitDumpAgent::create();
     JvmtiExport::enter_primordial_phase();
   }
+#endif
 
   // Initialize Threads state
   _number_of_threads = 0;
